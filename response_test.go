@@ -264,6 +264,47 @@ func TestShellMutationIsActivityEvenAfterPassingCheck(t *testing.T) {
 	}
 }
 
+func TestOpaqueCommandInvalidatesReadinessWithoutWorktreeSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	repo, appPath := committedTestRepo(t, "package app\n\nconst value = \"old\"\n")
+	hook(t, dir, map[string]any{
+		"session_id": "s", "turn_id": "opaque-command", "hook_event_name": "PreToolUse",
+		"tool_name": "apply_patch", "tool_use_id": "edit", "cwd": repo, "tool_input": map[string]any{"patch": "change"},
+	})
+	if err := os.WriteFile(appPath, []byte("package app\n\nconst value = \"new\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hook(t, dir, map[string]any{
+		"session_id": "s", "turn_id": "opaque-command", "hook_event_name": "PostToolUse",
+		"tool_name": "apply_patch", "tool_use_id": "edit", "cwd": repo, "tool_response": map[string]any{"exit_code": 0},
+	})
+	hook(t, dir, map[string]any{
+		"session_id": "s", "turn_id": "opaque-command", "hook_event_name": "PreToolUse",
+		"tool_name": "Bash", "tool_use_id": "generate", "cwd": repo, "tool_input": map[string]any{"command": "go generate ./..."},
+	})
+	s := loadTestState(t, dir)
+	pending := s.Pending["generate"]
+	if !pending.OpaqueMutation || pending.WorktreeKnown || s.LastEditResultKnown || s.Revision != 2 {
+		t.Fatalf("opaque command retained edit proof or took a snapshot: %#v", s)
+	}
+	hook(t, dir, map[string]any{
+		"session_id": "s", "turn_id": "opaque-command", "hook_event_name": "PostToolUse",
+		"tool_name": "Bash", "tool_use_id": "generate", "cwd": repo, "tool_response": map[string]any{"exit_code": 0},
+	})
+	hook(t, dir, map[string]any{
+		"session_id": "s", "turn_id": "opaque-command", "hook_event_name": "PreToolUse",
+		"tool_name": "Bash", "tool_use_id": "test", "cwd": repo, "tool_input": map[string]any{"command": "go test ./..."},
+	})
+	hook(t, dir, map[string]any{
+		"session_id": "s", "turn_id": "opaque-command", "hook_event_name": "PostToolUse",
+		"tool_name": "Bash", "tool_use_id": "test", "cwd": repo, "tool_response": map[string]any{"exit_code": 0},
+	})
+	out := hook(t, dir, map[string]any{"session_id": "s", "turn_id": "opaque-command", "hook_event_name": "Stop"})
+	if text := string(mustJSON(out)); !strings.Contains(text, "Recorded outcome: ACTIVITY OBSERVED") || strings.Contains(text, "Recorded outcome: VERIFIED") {
+		t.Fatalf("opaque command became verified without direct-edit proof: %#v", out)
+	}
+}
+
 func TestMixedEditBypassDoesNotRemainVerifiedAfterShellMutation(t *testing.T) {
 	dir := t.TempDir()
 	repo := t.TempDir()
@@ -322,8 +363,8 @@ func TestMixedEditBypassDoesNotRemainVerifiedAfterShellMutation(t *testing.T) {
 		"tool_name": "Bash", "tool_use_id": "retest", "cwd": repo, "tool_response": map[string]any{"exit_code": 0},
 	})
 	out = hook(t, dir, map[string]any{"session_id": "s", "turn_id": "mixed-edit", "hook_event_name": "Stop"})
-	if text := string(mustJSON(out)); !strings.Contains(text, "Recorded outcome: VERIFIED") {
-		t.Fatalf("observed shell mutation could not be verified by a later test: %#v", out)
+	if text := string(mustJSON(out)); !strings.Contains(text, "Recorded outcome: ACTIVITY OBSERVED") || strings.Contains(text, "Recorded outcome: VERIFIED") {
+		t.Fatalf("opaque shell mutation was treated as verified: %#v", out)
 	}
 }
 
@@ -503,7 +544,7 @@ func TestStaleEditResultCannotOverrideNewerObservedEdit(t *testing.T) {
 	}
 }
 
-func TestKnownPreTestSnapshotRequiresKnownPostSnapshot(t *testing.T) {
+func TestOrdinaryTestDoesNotRequireWorktreeSnapshots(t *testing.T) {
 	dir := t.TempDir()
 	repo := t.TempDir()
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
@@ -540,8 +581,8 @@ func TestKnownPreTestSnapshotRequiresKnownPostSnapshot(t *testing.T) {
 		"tool_name": "Bash", "tool_use_id": "test", "cwd": repo, "tool_response": map[string]any{"exit_code": 0},
 	})
 	out := hook(t, dir, map[string]any{"session_id": "s", "turn_id": "snapshot-loss", "hook_event_name": "Stop"})
-	if text := string(mustJSON(out)); !strings.Contains(text, "Recorded outcome: ACTIVITY OBSERVED") || strings.Contains(text, "Recorded outcome: VERIFIED") {
-		t.Fatalf("missing post-test snapshot was treated as unchanged: %#v", out)
+	if text := string(mustJSON(out)); !strings.Contains(text, "Recorded outcome: VERIFIED") {
+		t.Fatalf("ordinary test snapshot loss changed direct-edit proof: %#v", out)
 	}
 }
 

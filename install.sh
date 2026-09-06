@@ -13,6 +13,9 @@ skill_dir="$install_home/.codex/skills/one-shot-tally"
 
 mkdir -p "$bin_dir" "$skill_dir"
 go build -o "$bin_dir/one-shot-tally" .
+go build -o "$bin_dir/agent-file-guard" ./cmd/agent-file-guard
+"$bin_dir/agent-file-guard" install
+python3 scripts/install-file-guard.py
 install -m 0644 SKILL.md "$skill_dir/SKILL.md"
 cmp -s SKILL.md "$skill_dir/SKILL.md"
 version_output=$("$bin_dir/one-shot-tally" version)

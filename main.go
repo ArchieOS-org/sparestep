@@ -68,6 +68,7 @@ type pendingCall struct {
 	Edit               bool      `json:"edit,omitempty"`
 	Shipping           bool      `json:"shipping,omitempty"`
 	Deploying          bool      `json:"deploying,omitempty"`
+	OpaqueMutation     bool      `json:"opaque_mutation,omitempty"`
 	DeployCommitMatch  bool      `json:"deploy_commit_match,omitempty"`
 	TestEligible       bool      `json:"test_eligible,omitempty"`
 	WorktreeKnown      bool      `json:"worktree_known,omitempty"`
@@ -416,9 +417,6 @@ func preToolUse(e event, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := reconcilePlan(&s, e.CWD); err != nil {
-		return err
-	}
 	goalActive, err := sessionGoalActive(e.SessionID)
 	if err != nil {
 		return err
@@ -440,6 +438,7 @@ func preToolUse(e event, w io.Writer) error {
 	isTodoAdd := isCommand && standaloneTrackedCommand(command, todoAddRE)
 	isTodoDone := isCommand && standaloneTrackedCommand(command, todoDoneRE)
 	isAgentCall := isAgentSpawn(e.ToolName)
+	isOpaqueMutation := isCommand && !isRead && !isTest && !isPassiveWait && !isBackgroundRecord && !isBackgroundComplete && !isTodoAdd && !isTodoDone && !isShipping && !isDeploying && !gitCommitRE.MatchString(command)
 
 	s.TotalCalls++
 	callUnits := 4
@@ -473,6 +472,10 @@ func preToolUse(e event, w io.Writer) error {
 	if isEdit {
 		s.Revision++
 		s.InspectionStreak = 0
+	} else if isOpaqueMutation && s.Revision > 0 {
+		// A shell command can change files without a direct-edit proof. Count its
+		// possible mutation conservatively, but never treat it as verified work.
+		invalidateOpaqueMutation(&s)
 	} else if isRead {
 		s.InspectionStreak++
 		if s.InspectionStreak > s.MaxInspectionStreak {
@@ -513,12 +516,11 @@ func preToolUse(e event, w io.Writer) error {
 		s.LastProductionSucceeded = false
 	}
 	worktreeSnapshot, worktreeKnown := "", false
-	observeCommandWorktree := isCommand && !isRead && !isPassiveWait && !isBackgroundRecord && !isBackgroundComplete && !isTodoAdd && !isTodoDone && !isShipping && !isDeploying && !gitCommitRE.MatchString(command)
-	if s.Revision > 0 && (isEdit || observeCommandWorktree) {
+	if s.Revision > 0 && isEdit {
 		worktreeSnapshot, worktreeKnown = gitWorktreeSnapshot(e.CWD)
 	}
 	if e.ToolUseID != "" {
-		s.Pending[e.ToolUseID] = pendingCall{Test: isTest, Production: isProduction, Revision: s.Revision, StartedAt: time.Now().UTC(), RepeatedTest: repeatedTest, BackgroundRecord: isBackgroundRecord, BackgroundComplete: isBackgroundComplete, TodoAdd: isTodoAdd, TodoDone: isTodoDone, GoalTransition: goalChange, Edit: isEdit, Shipping: isShipping, Deploying: isDeploying, DeployCommitMatch: deployCommitMatch, TestEligible: isTest && currentEditReady(s) && !hasPendingEdit(s), WorktreeKnown: worktreeKnown, WorktreeSnapshot: worktreeSnapshot, WorkingDirectory: e.CWD, Sequence: s.TotalCalls}
+		s.Pending[e.ToolUseID] = pendingCall{Test: isTest, Production: isProduction, Revision: s.Revision, StartedAt: time.Now().UTC(), RepeatedTest: repeatedTest, BackgroundRecord: isBackgroundRecord, BackgroundComplete: isBackgroundComplete, TodoAdd: isTodoAdd, TodoDone: isTodoDone, GoalTransition: goalChange, Edit: isEdit, Shipping: isShipping, Deploying: isDeploying, OpaqueMutation: isOpaqueMutation, DeployCommitMatch: deployCommitMatch, TestEligible: isTest && currentEditReady(s) && !hasPendingEdit(s), WorktreeKnown: worktreeKnown, WorktreeSnapshot: worktreeSnapshot, WorkingDirectory: e.CWD, Sequence: s.TotalCalls}
 	}
 	if repeats == 4 {
 		s.RepeatedWarnings++
@@ -556,6 +558,11 @@ func postToolUse(e event, w io.Writer) error {
 			s.LastCallResultSequence = pending.Sequence
 		}
 		passed = commandPassed
+		if pending.OpaqueMutation && resultKnown && !resultSucceeded && pending.Revision == s.Revision && s.Revision > 0 {
+			s.LastEditResultKnown = true
+			s.LastEditSucceeded = false
+			s.LastEditResultRevision = s.Revision
+		}
 		if pending.Test {
 			passed = resultKnown && resultSucceeded
 		}
@@ -569,12 +576,6 @@ func postToolUse(e event, w io.Writer) error {
 			if snapshot, known := gitWorktreeSnapshot(cwd); known {
 				worktreeConsistent = snapshot == pending.WorktreeSnapshot
 				worktreeChanged = !worktreeConsistent
-				if worktreeChanged && !pending.Edit {
-					recordObservedWorktreeEdit(&s, resultKnown, resultSucceeded)
-					if s.LastEditSucceeded {
-						s.SuccessfulEdits++
-					}
-				}
 			}
 		}
 		if pending.Edit && pending.Revision >= s.LastEditResultRevision {
@@ -1059,6 +1060,13 @@ func recordObservedWorktreeEdit(s *state, resultKnown, resultSucceeded bool) {
 	s.Revision++
 	s.LastEditResultKnown = true
 	s.LastEditSucceeded = !resultKnown || resultSucceeded
+	s.LastEditResultRevision = s.Revision
+}
+
+func invalidateOpaqueMutation(s *state) {
+	s.Revision++
+	s.LastEditResultKnown = false
+	s.LastEditSucceeded = false
 	s.LastEditResultRevision = s.Revision
 }
 
