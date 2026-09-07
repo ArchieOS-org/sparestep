@@ -80,9 +80,8 @@ one-shot-tally help|-h|--help
 Ordinary shell removals use [Move to Trash with undo receipts](native-trash/README.md)
 through the file guard. Each successful move prints the exact restore command.
 
-For shared outbound SSH limits across the BoomPay and CISL2/A250 fleets, see
-[fleet SSH admission](FLEET-SSH.md). The full installer configures the local
-OpenSSH guard for both fleets.
+The [fleet SSH guard](FLEET-SSH.md) is disabled. The full installer does not
+activate it.
 
 For the separate native macOS worker that removes Trash items older than seven days, see [automatic Trash maintenance](maintenance/README.md). It runs through launchd without AI input and requires one host-side activation.
 

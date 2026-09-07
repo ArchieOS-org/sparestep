@@ -39,5 +39,4 @@ xcrun swiftc -parse-as-library -O native-trash/TrashCommand.swift -o "$install_h
 go build -o "$bin_dir/agent-file-guard" ./cmd/agent-file-guard
 "$bin_dir/agent-file-guard" install
 python3 scripts/install-file-guard.py
-python3 scripts/install-fleet-ssh-guard.py --home "$install_home"
 printf '%s\n' "one-shot-tally: production install verified"

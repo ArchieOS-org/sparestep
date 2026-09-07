@@ -1,5 +1,9 @@
 # Shared outbound fleet SSH limits
 
+Disabled at the user's request. The active SSH config no longer includes this
+guard, and the full installer no longer activates it. The implementation below
+is retained as an inactive reference.
+
 The local OpenSSH configuration sends BoomPay and CISL2/A250 fleet connections
 through `fleet-ssh-guard.py`. All covered callers on this Mac share one budget.
 This includes `/usr/bin/ssh`, SCP, SFTP, and Docker's SSH transport when they use
