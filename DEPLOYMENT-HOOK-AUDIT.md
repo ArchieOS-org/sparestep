@@ -49,6 +49,52 @@ The repository delivery rule also exposes a scope gap: Stop originally received 
 
 After installation, one real native patch changed files in deploy-it, ship-it, SMSBridge, and CISL2. The host hook recorded all four canonical repository roots under this session, each with both PreToolUse and PostToolUse observations. This confirms compatibility with the installed host's actual edit events. No synthetic events were written to the live registry.
 
+## Controller repair follow-up
+
+SMSBridge's existing production run completed successfully. The exact-revision
+`deploy-it` verification returned exit 0 for
+`7d561352b15395fd61d1e28999ff953a711e43a9`. Both public health endpoints reported
+that build. Reattaching to the existing run verified its result without another
+upload. The earlier local watcher timeout had not stopped the remote workflow.
+
+The shared controller repair now keeps the lock directory in place and uses
+the same kernel advisory lock in Garage and the central controller. New owner
+records identify their format and distinguish active from released ownership.
+Nested commands must inherit the actual locked descriptor and matching owner
+record. Fresh empty legacy acquisitions remain protected; aged empty directories
+can recover in place. Garage also propagates a failed child command's exit code.
+
+A separate bootstrap defect prevented Partners from receiving this repair:
+it acquired the old cached lock before fetching the new controller. The tracked
+infrastructure deployment command now obtains the lock through the shipped
+archive, fast-forwards the verified clean cache, checks the exact revision and
+helper bytes, and releases ownership before reporting cache acceptance. This
+is a controller update; it is not evidence that the whole fleet has converged.
+
+The infrastructure manifest previously requested 3,600 seconds, which the
+installed `deploy-it check` rejected: `timeout_seconds must be between 1 and 300`.
+The repaired manifest uses 300 seconds. Its former implicit Wazuh audit and
+rolling reboot are now an explicit `wazuh-sca-audit` selector. Long fleet
+procedures still need a resumable execution design within the valid envelope.
+Keeping their selectors does not prove that those procedures meet that limit.
+
+The native broad infrastructure test run reported 53 failures and 441 errors
+across 1,225 tests, with many denied fixture cleanup operations. It is not
+counted as a pass. Focused Linux testing exposed and helped fix an additional
+BSD/GNU file-permission check mismatch and missing helper dependencies in
+fixtures; the affected 91-test Linux run then passed. Generated fixture files
+left in the repository root were preserved under ignored runtime storage and
+removed from the publication set. No production data or Trash was inspected
+or removed during that cleanup.
+
+The final shared-lock snapshot passed all 24 focused controller/lock tests in
+Linux after its source hashes were checked. Garage passed all 10 lock tests,
+including real inheritance in both directions, refusal of an unlocked inherited
+descriptor, fresh legacy-acquisition protection, and propagation of child exit
+37 after durable release. Shell validation and diff checks passed. These are
+repair checks; the controller and Garage updates still require native delivery
+and destination receipts.
+
 ## Native Trash maintenance
 
 The [prepared maintenance worker](maintenance/README.md) uses launchd for weekly runs, login catch-up, and Trash-change triggers. It requires no AI calls. It selects items whose macOS date-added value is strictly more than seven days old and skips unknown ages. Fixture tests do not access protected Trash paths. Activation must occur from the user's normal Terminal because this coding session explicitly denies Trash access. No maintenance job was activated by this repair. The guard also rejected a read-only `launchctl print` query for `com.colinknapp.trash-maintenance` with `Access to macOS Trash and empty-Trash operations are blocked.` Host-side activation status could not be checked through this session.
