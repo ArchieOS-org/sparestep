@@ -68,6 +68,8 @@ one-shot-tally help|-h|--help
 
 ## Background work
 
+For the separate native macOS worker that removes Trash items older than seven days, see [automatic Trash maintenance](maintenance/README.md). It runs through launchd without AI input and requires one host-side activation.
+
 Record a job before detaching it:
 
 ```sh
