@@ -61,6 +61,7 @@ type event struct {
 
 type pendingCall struct {
 	Test               bool      `json:"test"`
+	BrowserLaunch      bool      `json:"browser_launch,omitempty"`
 	Production         bool      `json:"production"`
 	Revision           int       `json:"revision"`
 	StartedAt          time.Time `json:"started_at"`
@@ -223,6 +224,15 @@ type hookOutput struct {
 	SystemMessage string `json:"systemMessage,omitempty"`
 	Decision      string `json:"decision,omitempty"`
 	Reason        string `json:"reason,omitempty"`
+}
+
+type postToolHookOutput struct {
+	HookSpecificOutput postToolSpecificOutput `json:"hookSpecificOutput,omitempty"`
+}
+
+type postToolSpecificOutput struct {
+	HookEventName     string `json:"hookEventName"`
+	AdditionalContext string `json:"additionalContext"`
 }
 
 func main() {
@@ -453,6 +463,11 @@ func preToolUse(e event, w io.Writer) error {
 	} else {
 		e.CWD = s.CWD
 	}
+	// Only structured native edit metadata is eligible. Shell commands remain
+	// opaque because their text cannot safely prove which repository changed.
+	if err := recordExplicitEditRoots(e); err != nil {
+		return err
+	}
 	goalActive, err := sessionGoalActive(e.SessionID)
 	if err != nil {
 		return err
@@ -478,6 +493,7 @@ func preToolUse(e event, w io.Writer) error {
 	isEdit := isEditTool(e.ToolName)
 	isCommand := isCommandTool(e.ToolName)
 	isTest := isCommand && testRE.MatchString(command) && standaloneTestCommand(command)
+	isBrowserLaunch := isCommand && playwrightBrowserCommand(command)
 	isShipping, isDeploying := deliveryInvocations(command)
 	operationKey, operationKind := "", ""
 	if isCommand {
@@ -581,7 +597,7 @@ func preToolUse(e event, w io.Writer) error {
 		worktreeSnapshot, worktreeKnown = gitWorktreeSnapshot(e.CWD)
 	}
 	if e.ToolUseID != "" {
-		s.Pending[e.ToolUseID] = pendingCall{Test: isTest, Production: isProduction, Revision: s.Revision, StartedAt: time.Now().UTC(), RepeatedTest: repeatedTest, BackgroundRecord: isBackgroundRecord, BackgroundComplete: isBackgroundComplete, TodoAdd: isTodoAdd, TodoDone: isTodoDone, GoalTransition: goalChange, Edit: isEdit, Shipping: isShipping, Deploying: isDeploying, OpaqueMutation: isOpaqueMutation, DeployCommitMatch: deployCommitMatch, TestEligible: isTest && currentEditReady(s) && !hasPendingEdit(s), WorktreeKnown: worktreeKnown, WorktreeSnapshot: worktreeSnapshot, WorkingDirectory: e.CWD, Sequence: s.TotalCalls, OperationKey: operationKey, OperationKind: operationKind}
+		s.Pending[e.ToolUseID] = pendingCall{Test: isTest, BrowserLaunch: isBrowserLaunch, Production: isProduction, Revision: s.Revision, StartedAt: time.Now().UTC(), RepeatedTest: repeatedTest, BackgroundRecord: isBackgroundRecord, BackgroundComplete: isBackgroundComplete, TodoAdd: isTodoAdd, TodoDone: isTodoDone, GoalTransition: goalChange, Edit: isEdit, Shipping: isShipping, Deploying: isDeploying, OpaqueMutation: isOpaqueMutation, DeployCommitMatch: deployCommitMatch, TestEligible: isTest && currentEditReady(s) && !hasPendingEdit(s), WorktreeKnown: worktreeKnown, WorktreeSnapshot: worktreeSnapshot, WorkingDirectory: e.CWD, Sequence: s.TotalCalls, OperationKey: operationKey, OperationKind: operationKind}
 	}
 	if repeats == 4 {
 		s.RepeatedWarnings++
@@ -609,9 +625,19 @@ func postToolUse(e event, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if e.CWD == "" {
+		e.CWD = s.CWD
+	}
+	// Some native surfaces expose the edit input only at PostToolUse. This is a
+	// second observation, not a duplicate: it protects an edit that completes
+	// while Stop is delivering the generation recorded at PreToolUse.
+	if err := recordExplicitEditRoots(e); err != nil {
+		return err
+	}
 	pending, ok := s.Pending[e.ToolUseID]
 	passed := false
 	resultKnown, resultSucceeded := false, false
+	browserFeedback := ""
 	if ok {
 		delete(s.Pending, e.ToolUseID)
 		if nativeResponseTool(e.ToolName) {
@@ -624,6 +650,12 @@ func postToolUse(e event, w io.Writer) error {
 			}
 		}
 		resultKnown, resultSucceeded = hookResponseResult(e.ToolName, e.ToolResponse)
+		// Some local hooks provide only stdout. A strong browser-startup signature
+		// can guide the next action, but it must never change result accounting.
+		// A structured successful result always suppresses the advisory.
+		if pending.BrowserLaunch && (!resultKnown || !resultSucceeded) {
+			browserFeedback = chromeStartupCrashFeedback(e.ToolResponse)
+		}
 		if !resultKnown {
 			s.LastUnknownResponseShape = responseShape(e.ToolResponse)
 		}
@@ -768,7 +800,13 @@ func postToolUse(e event, w io.Writer) error {
 	if err := save(p, s); err != nil {
 		return err
 	}
-	return writeJSON(w, hookOutput{})
+	if browserFeedback == "" {
+		return writeJSON(w, hookOutput{})
+	}
+	return writeJSON(w, postToolHookOutput{HookSpecificOutput: postToolSpecificOutput{
+		HookEventName:     "PostToolUse",
+		AdditionalContext: browserFeedback,
+	}})
 }
 
 func stop(e event, w io.Writer) error {
@@ -1207,13 +1245,7 @@ func invalidateOpaqueMutation(s *state) {
 }
 
 func isEditTool(tool string) bool {
-	name := strings.ToLower(strings.TrimSpace(tool))
-	for _, separator := range []string{"__", ".", "/", ":"} {
-		if index := strings.LastIndex(name, separator); index >= 0 {
-			name = name[index+len(separator):]
-		}
-	}
-	name = strings.NewReplacer("_", "", "-", "").Replace(name)
+	name := normalizedToolName(tool)
 	return name == "applypatch" || name == "edit" || name == "write"
 }
 

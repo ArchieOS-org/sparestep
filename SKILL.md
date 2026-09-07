@@ -36,7 +36,7 @@ The hook records activity, checks, delivery, background work, work items, and su
 - `VERIFIED`: the current edit completed and a later standalone local check passed.
 - `RECOVERED`: a failed delivery later has a matching structured success. The report shows `INCREDIBLE WIN` and outcome grade 100. Efficiency remains diagnostic.
 
-`SessionStart`, `UserPromptSubmit`, `PreToolUse`, and `PostToolUse` return `{}`. The hook does not change or approve commands.
+`SessionStart`, `UserPromptSubmit`, and `PreToolUse` return `{}`. `PostToolUse` normally returns `{}`. A recognized native browser startup error adds recovery guidance. The hook does not change or approve commands.
 
 The first `Stop` reports the recorded facts. A repeated `Stop` returns `{}` unless the blocker or recovery report changed.
 
@@ -58,6 +58,14 @@ For multi-step work:
 4. Give each subagent task a distinct `task_name`.
 
 Do not create TODOs or subagents only to increase the score.
+
+## Browser startup failures
+
+If Chrome aborts during macOS application registration, do not repeat the same native launch unchanged. Check the failure output and the available browser runtimes first. Use an existing permitted browser runtime or service for the same test. Keep the current sandbox and access restrictions. Do not suppress crash notifications or disable security controls to make the test run.
+
+On the local Mac, a native Chrome startup crash was matched to a Playwright launch on September 7, 2026. The installed `ghcr.io/browserless/chromium:v2.55.2` image subsequently passed a Playwright launch and button-click check with networking disabled and no host mounts. In that image, `playwright-core` selects its bundled Chromium with `chromium.launch({headless:true})`. Verify the image remains available before using it. Supply only the test files and network access that the task requires.
+
+This guidance does not prove why macOS registration failed. If no permitted runtime works, report the exact failure and continue independent work.
 
 ## Language
 

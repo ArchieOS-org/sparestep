@@ -22,7 +22,7 @@ The base allowance is 30 weighted calls and three checks. Each accepted work ite
 
 - `SessionStart` and `UserPromptSubmit` return `{}`.
 - `PreToolUse` records calls and returns `{}`. It does not rewrite or approve a command.
-- `PostToolUse` records explicit structured results and returns `{}`. Plain output text is not proof of success.
+- `PostToolUse` records explicit structured results and normally returns `{}`. Recognized native browser startup errors add recovery guidance. Plain output text is not proof of success.
 - Native `DeliveryResult` events record the actual `ship-it` or `deploy-it` result.
 - Structured command metadata and native delivery receipts supply result evidence. Prose, quoted examples, printed markers, and JSON printed in command stdout cannot prove success. Native receipts use a cooperating local executable protocol, not an authenticated remote service.
 - Some Codex command hooks supply stdout without an exit status. Those results remain unknown. Native delivery reports its result directly after the repository command returns. A successful receipt must match a clean current checkout before it clears incomplete delivery.
@@ -31,6 +31,8 @@ The base allowance is 30 weighted calls and three checks. Each accepted work ite
 - Audit statements and quoted examples do not create blocker claims. The hook does not promise universal natural-language understanding.
 
 Standard mode and goal mode use the same workload allowance.
+
+When a native Chrome or Chromium launch fails during startup, tally can advise the agent to change the browser runtime before retrying. It does not stop tools, suppress crash dialogs, or change permissions. Page errors and unrelated command failures do not trigger this guidance. See [browser startup failures](SKILL.md#browser-startup-failures) for the verified local alternative and its limits.
 
 ## Language rules
 

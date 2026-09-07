@@ -69,6 +69,7 @@ def main():
             "    count = int(count_file.read_text()) if count_file.exists() else 0\n"
             "    count_file.write_text(str(count + 1))\n"
             "    with log.open('a') as stream: stream.write(name + ' ' + commit + '\\n')\n"
+            "    if name == 'repo-b' and __import__('os').environ.get('FAIL_TOUCHED_DEPLOYMENT'): raise SystemExit(23)\n"
             "    if name == 'repo-b' and count == 0: raise SystemExit(23)\n"
             "    raise SystemExit(0)\n"
             "with log.open('a') as stream: stream.write(commit + '\\n')\n"
@@ -158,6 +159,48 @@ def main():
         multi_lines = [line.split()[0] for line in deploy_log.read_text(encoding="utf-8").splitlines() if line.startswith("repo-")]
         assert multi_lines.count("repo-a") == 1, multi_lines
         assert multi_lines.count("repo-b") == 2, multi_lines
+
+        # An edit outside the tab's cwd must reach Stop through native edit
+        # events. Merely reading another dirty repository must not select it.
+        touched_event = {"session_id": "touched-session", "turn_id": "touched-one", "cwd": str(work)}
+        edit_input = {"patch": "*** Begin Patch\n*** Update File: " + str(roots[1] / "tracked.txt") + "\n@@\n-repo-b edit\n+external native edit\n*** End Patch"}
+        hook(bin_dir / "one-shot-tally", {**touched_event, "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "external-edit", "tool_input": edit_input}, str(work), env)
+        (roots[1] / "tracked.txt").write_text("external native edit\n", encoding="utf-8")
+        hook(bin_dir / "one-shot-tally", {**touched_event, "hook_event_name": "PostToolUse", "tool_name": "apply_patch", "tool_use_id": "external-edit", "tool_input": edit_input, "tool_response": "Success"}, str(work), env)
+        (roots[0] / "tracked.txt").write_text("another session's local work\n", encoding="utf-8")
+        hook(bin_dir / "one-shot-tally", {**touched_event, "hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": str(roots[0] / "tracked.txt")}}, str(work), env)
+        touched_stop = {**touched_event, "hook_event_name": "Stop", "status": "completed"}
+        hook(bin_dir / "ship-it", touched_stop, str(work), env)
+        assert run(["git", "-C", str(roots[1]), "status", "--porcelain"], str(temp), env).strip() == ""
+        assert run(["git", "-C", str(roots[1]), "rev-parse", "HEAD"], str(temp), env) == run(["git", "-C", str(roots[1]), "rev-parse", "origin/main"], str(temp), env)
+        assert run(["git", "-C", str(roots[0]), "status", "--porcelain"], str(temp), env).strip() != ""
+        touched_lines = [line.split()[0] for line in deploy_log.read_text(encoding="utf-8").splitlines() if line.startswith("repo-")]
+        assert touched_lines.count("repo-a") == 1, touched_lines
+        assert touched_lines.count("repo-b") == 3, touched_lines
+        before_touched_repeat = deploy_log.read_text(encoding="utf-8")
+        hook(bin_dir / "ship-it", {**touched_stop, "stop_hook_active": True}, str(work), env)
+        assert deploy_log.read_text(encoding="utf-8") == before_touched_repeat
+
+        touched_stop["turn_id"] = "touched-failure"
+        new_edit = {**touched_stop, "tool_name": "Write", "tool_use_id": "pending-deployment", "tool_input": {"file_path": str(roots[1] / "tracked.txt")}}
+        hook(bin_dir / "one-shot-tally", {**new_edit, "hook_event_name": "PreToolUse"}, str(work), env)
+        (roots[1] / "tracked.txt").write_text("pending deployment\n", encoding="utf-8")
+        hook(bin_dir / "one-shot-tally", {**new_edit, "hook_event_name": "PostToolUse", "tool_response": "Success"}, str(work), env)
+        env["FAIL_TOUCHED_DEPLOYMENT"] = "1"
+        failed_touched, _ = hook(bin_dir / "ship-it", touched_stop, str(work), env)
+        assert "FAILED" in failed_touched.get("systemMessage", ""), failed_touched
+        assert run(["git", "-C", str(roots[1]), "status", "--porcelain"], str(temp), env).strip() == ""
+        hook(bin_dir / "ship-it", {**touched_stop, "stop_hook_active": True}, str(work), env)
+        after_failed_retry = deploy_log.read_text(encoding="utf-8")
+        hook(bin_dir / "ship-it", {**touched_stop, "stop_hook_active": True}, str(work), env)
+        assert deploy_log.read_text(encoding="utf-8") == after_failed_retry
+        del env["FAIL_TOUCHED_DEPLOYMENT"]
+        touched_stop["turn_id"] = "touched-recovery"
+        recovered_touched, _ = hook(bin_dir / "ship-it", touched_stop, str(work), env)
+        assert "RECOVERED" in recovered_touched.get("systemMessage", ""), recovered_touched
+        after_recovery = deploy_log.read_text(encoding="utf-8")
+        hook(bin_dir / "ship-it", {**touched_stop, "stop_hook_active": True}, str(work), env)
+        assert deploy_log.read_text(encoding="utf-8") == after_recovery
         del env["MULTI_ROOT_MODE"]
 
         (bin_dir / "one-shot-tally").write_text("#!/bin/sh\nprintf '%s' 'not-json'\n", encoding="utf-8")
