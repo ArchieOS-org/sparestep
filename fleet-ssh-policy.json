@@ -5,9 +5,9 @@
   "failure_window_seconds": 600,
   "max_auth_tries": 3,
   "max_failures": 5,
-  "connect_timeout_seconds": 8,
+  "connect_timeout_seconds": 3,
   "login_grace_seconds": 30,
-  "wait_timeout_seconds": 60,
+  "wait_timeout_seconds": 0,
   "targets": {
     "142.93.158.204": ["boompay-control-01"],
     "147.182.155.125": ["boompay-edge-01"],

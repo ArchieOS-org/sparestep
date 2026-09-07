@@ -56,7 +56,7 @@ func Install(out io.Writer) error {
 	if err := installHooks(filepath.Join(home, ".cursor", "hooks.json"), bin, "cursor"); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "Installed independent deletion guards for Codex accounts, Claude, and Cursor.")
+	fmt.Fprintln(out, "Installed Move to Trash routing and file guards for Codex accounts, Claude, and Cursor.")
 	return nil
 }
 
@@ -86,7 +86,11 @@ func installHooks(path, bin, surface string) error {
 	for _, event := range events {
 		entries, _ := hooks[event].([]any)
 		// Preserve all foreign entries and their order (Codex trust IDs use indexes).
-		command := shellQuote(bin) + " hook " + surface
+		hookSurface := surface
+		if event == "beforeShellExecution" {
+			hookSurface = "cursor-shell"
+		}
+		command := shellQuote(bin) + " hook " + hookSurface
 		if surface != "cursor" {
 			fallback := `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"File guard unavailable; tool denied."}}`
 			command += " || printf '%s\\n' " + shellQuote(fallback)

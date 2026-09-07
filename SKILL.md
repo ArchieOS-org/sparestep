@@ -111,6 +111,11 @@ The command reads Codex goal history. It does not change Codex goal state.
 
 ## Build and install
 
+The full installer also installs native Move to Trash routing for ordinary shell
+removals. Include each successful move's printed Undo command in the user reply.
+Do not claim a move succeeded before the tool returns. Retain the session's
+filesystem restrictions; do not fall back to permanent deletion.
+
 ```sh
 go test ./...
 ./install.sh

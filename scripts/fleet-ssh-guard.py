@@ -31,11 +31,11 @@ class GuardError(RuntimeError):
     pass
 
 
-def _number(value, name, upper=NUMBER_LIMIT):
+def _number(value, name, upper=NUMBER_LIMIT, allow_zero=False):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise GuardError(f"policy {name} must be a number")
     value = float(value)
-    if not math.isfinite(value) or not 0 < value <= upper:
+    if not math.isfinite(value) or value > upper or value < 0 or (not allow_zero and value == 0):
         raise GuardError(f"policy {name} is outside its allowed range")
     return value
 
@@ -59,8 +59,10 @@ def validate_policy(raw):
         result[name] = value
     if result["max_auth_tries"] >= result["max_failures"]:
         raise GuardError("max_auth_tries must be below max_failures")
-    for name in ("min_interval_seconds", "failure_window_seconds", "connect_timeout_seconds", "login_grace_seconds", "wait_timeout_seconds"):
+    for name in ("min_interval_seconds", "failure_window_seconds", "login_grace_seconds"):
         result[name] = _number(raw[name], name)
+    result["connect_timeout_seconds"] = _number(raw["connect_timeout_seconds"], "connect_timeout_seconds", upper=5)
+    result["wait_timeout_seconds"] = _number(raw["wait_timeout_seconds"], "wait_timeout_seconds", upper=5, allow_zero=True)
     targets = raw["targets"]
     if not isinstance(targets, dict) or not targets:
         raise GuardError("policy targets must be a nonempty mapping")
@@ -156,16 +158,27 @@ def _write_state(directory, state):
 
 
 class _StateLock:
-    def __init__(self, directory):
+    def __init__(self, directory, deadline=None):
         self.directory = Path(directory)
+        self.deadline = deadline
         self.handle = None
 
     def __enter__(self):
         try:
             self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
             self.handle = (self.directory / "state.lock").open("a+")
-            fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX)
+            while True:
+                try:
+                    fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if self.deadline is None or time.monotonic() >= self.deadline:
+                        raise GuardError("shared state is busy")
+                    time.sleep(min(0.01, max(0.0, self.deadline - time.monotonic())))
             return self
+        except GuardError:
+            self.close()
+            raise
         except OSError as error:
             self.close()
             raise GuardError(f"cannot lock shared state: {error}") from error
@@ -266,12 +279,12 @@ def admit_connection(policy, host, port, directory, parent_pid=None, deadline=No
         slot = _Slot(directory, policy["max_connections"])
         if not slot.acquire():
             if time.monotonic() >= deadline:
-                raise GuardError("connection slot wait timed out")
+                raise GuardError("connection slot unavailable")
             time.sleep(0.02)
             continue
         try:
             keep_slot = False
-            with _StateLock(directory):
+            with _StateLock(directory, deadline):
                 now = time.monotonic()
                 state = _read_state(directory)
                 _rebase_future_times(state, policy, now)
@@ -284,38 +297,43 @@ def admit_connection(policy, host, port, directory, parent_pid=None, deadline=No
                     state["last_start"] = now
                     state["dialing"] = None
                     _write_state(directory, state)
+                    reason = f"connection start is incomplete; retry in {policy['min_interval_seconds']:.2f}s"
                     wait_for = policy["min_interval_seconds"]
-                    continue
-                allowed_at = now if last_start is None else max(now, last_start + policy["min_interval_seconds"])
-                used = sum(entry["weight"] for entry in state["pending"] if entry["host"] == target)
-                if allowed_at > now or used + policy["max_auth_tries"] >= policy["max_failures"]:
-                    _write_state(directory, state)
-                    wait_for = max(0.02, allowed_at - now) if allowed_at > now else 0.02
                 else:
-                    state["last_start"] = now
-                    state["pending"].append({"pid": parent_pid, "host": target, "at": now, "weight": policy["max_auth_tries"]})
-                    state["last_start"] = None
-                    state["dialing"] = now
-                    _write_state(directory, state)
-                    family = socket.AF_INET6 if ":" in target else socket.AF_INET
-                    sock = socket.socket(family, socket.SOCK_STREAM)
-                    sock.setblocking(False)
-                    address = (target, port, 0, 0) if family == socket.AF_INET6 else (target, port)
-                    status = sock.connect_ex(address)
-                    state["dialing"] = None
-                    state["last_start"] = time.monotonic()
-                    _write_state(directory, state)
-                    if status not in (0, errno.EINPROGRESS, errno.EWOULDBLOCK, errno.EALREADY):
-                        sock.close()
-                        raise GuardError(f"TCP connection failed: {os.strerror(status)}")
-                    admission = Admission(sock, slot, directory, policy, parent_pid, target)
-                    keep_slot = True
-                    return admission
+                    allowed_at = now if last_start is None else max(now, last_start + policy["min_interval_seconds"])
+                    used = sum(entry["weight"] for entry in state["pending"] if entry["host"] == target)
+                    if allowed_at > now or used + policy["max_auth_tries"] >= policy["max_failures"]:
+                        _write_state(directory, state)
+                        if allowed_at > now:
+                            wait_for = max(0.02, allowed_at - now)
+                            reason = f"connection pacing active; retry in {allowed_at - now:.2f}s"
+                        else:
+                            wait_for = 0.02
+                            reason = "authentication failure budget is reserved"
+                    else:
+                        state["pending"].append({"pid": parent_pid, "host": target, "at": now, "weight": policy["max_auth_tries"]})
+                        state["last_start"] = None
+                        state["dialing"] = now
+                        _write_state(directory, state)
+                        family = socket.AF_INET6 if ":" in target else socket.AF_INET
+                        sock = socket.socket(family, socket.SOCK_STREAM)
+                        sock.setblocking(False)
+                        address = (target, port, 0, 0) if family == socket.AF_INET6 else (target, port)
+                        status = sock.connect_ex(address)
+                        state["dialing"] = None
+                        state["last_start"] = time.monotonic()
+                        _write_state(directory, state)
+                        if status not in (0, errno.EINPROGRESS, errno.EWOULDBLOCK, errno.EALREADY):
+                            sock.close()
+                            raise GuardError(f"TCP connection failed: {os.strerror(status)}")
+                        admission = Admission(sock, slot, directory, policy, parent_pid, target)
+                        keep_slot = True
+                        return admission
         finally:
             if not keep_slot and slot.handle is not None:
                 slot.close()
         if time.monotonic() >= deadline:
-            raise GuardError("connection admission wait timed out")
+            raise GuardError(reason)
         time.sleep(min(wait_for, max(0.0, deadline - time.monotonic())))
 
 

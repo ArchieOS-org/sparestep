@@ -5,6 +5,7 @@ go 1.23.0
 require (
 	github.com/ProtonMail/go-crypto v1.4.1
 	golang.org/x/sys v0.35.0
+	mvdan.cc/sh/v3 v3.10.0
 )
 
 require (

@@ -121,7 +121,7 @@ func Inspect(tool string, input any, cwd string) string {
 			if (isCommand || isPath) && (strings.Contains(lower, ".trash") || emptyTrash.MatchString(v)) {
 				return "Access to macOS Trash and empty-Trash operations are blocked."
 			}
-			if isCommand && destructive.MatchString(v) || strings.Contains(v, "*** Delete File:") {
+			if isCommand && destructiveCommand(v) || strings.Contains(v, "*** Delete File:") {
 				return removalAdvice
 			}
 			if isCommand && interactive.MatchString(strings.TrimSpace(v)) {
@@ -172,12 +172,40 @@ func Hook(in io.Reader, out io.Writer, surface string) error {
 			input = decoded
 		}
 	}
+	changed := false
 	if reason == "" {
-		reason = Inspect(tool, input, cwd)
+		name := strings.ToLower(tool)
+		if strings.Contains(name, "bash") || strings.Contains(name, "shell") || strings.Contains(name, "exec_command") || tool == "" {
+			home, _ := os.UserHomeDir()
+			updated, rewritten, err := rewrittenInput(input, filepath.Join(home, ".local", "bin", "agent-file-guard"))
+			if err != nil {
+				reason = err.Error()
+			} else if rewritten {
+				if surface == "cursor-shell" {
+					reason = "This legacy Cursor hook cannot rewrite commands. Use the preToolUse hook to route removal through Move to Trash."
+				} else {
+					input, changed = updated, true
+				}
+			}
+		}
+		if reason == "" {
+			reason = Inspect(tool, input, cwd)
+		}
 	}
 	response := map[string]any{}
 	if strings.HasPrefix(surface, "cursor") {
 		response["permission"] = "allow"
+	}
+	if changed && reason == "" {
+		message := "Removal is routed through macOS Move to Trash. Report the tool's per-file Undo commands in your reply; do not claim a move succeeded before the tool returns."
+		if strings.HasPrefix(surface, "cursor") {
+			response["updated_input"] = input
+			response["user_message"] = message
+			response["agent_message"] = message
+		} else {
+			response["hookSpecificOutput"] = map[string]any{"hookEventName": "PreToolUse", "permissionDecision": "allow", "updatedInput": input, "additionalContext": message}
+			response["systemMessage"] = "Removal will use Move to Trash and print an Undo command."
+		}
 	}
 	if reason != "" {
 		if strings.HasPrefix(surface, "cursor") {

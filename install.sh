@@ -34,6 +34,8 @@ if [ "$install_mode" = tally-only ]; then
     exit 0
 fi
 
+mkdir -p "$install_home/.local/libexec"
+xcrun swiftc -parse-as-library -O native-trash/TrashCommand.swift -o "$install_home/.local/libexec/agent-native-trash"
 go build -o "$bin_dir/agent-file-guard" ./cmd/agent-file-guard
 "$bin_dir/agent-file-guard" install
 python3 scripts/install-file-guard.py

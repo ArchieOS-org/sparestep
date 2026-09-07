@@ -65,6 +65,7 @@ def install(home):
              "  PermitLocalCommand yes\n"
              "  LocalCommand exec " + command + " authenticated %h %p\n"
              "  ConnectionAttempts 1\n"
+             "  ConnectTimeout 3\n"
              "  BatchMode yes\n"
              "  PreferredAuthentications publickey\n"
              "  IdentitiesOnly yes\n"
@@ -91,7 +92,7 @@ def install(home):
         Path(candidate).write_text(candidate_text)
         for host in targets + names:
             effective = settings(candidate, host)
-            for name, expected in {"connectionattempts": "1", "controlmaster": "false",
+            for name, expected in {"connectionattempts": "1", "connecttimeout": "3", "controlmaster": "false",
                                    "permitlocalcommand": "yes", "batchmode": "yes",
                                    "identitiesonly": "yes", "preferredauthentications": "publickey"}.items():
                 if effective.get(name) != expected:

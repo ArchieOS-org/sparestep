@@ -10,7 +10,7 @@ import (
 func TestInstallHooksPreservesExistingHandlersAndIsIdempotent(t *testing.T) {
 	for _, surface := range []string{"codex", "claude", "cursor"} {
 		t.Run(surface, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "hooks.json")
+			path := filepath.Join(fileguardTestDir(t), "hooks.json")
 			original := []byte(`{"other_setting":true,"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"command":"existing-tally","type":"command"}]}]}}`)
 			if err := os.WriteFile(path, original, 0600); err != nil {
 				t.Fatal(err)

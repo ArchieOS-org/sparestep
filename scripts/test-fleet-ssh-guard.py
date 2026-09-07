@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import importlib.util
+import fcntl
 import multiprocessing
 import os
 from pathlib import Path
@@ -27,7 +28,7 @@ def raw_policy(**changes):
         "max_failures": 5,
         "connect_timeout_seconds": 1,
         "login_grace_seconds": 0.01,
-        "wait_timeout_seconds": 0.35,
+        "wait_timeout_seconds": 0,
         "targets": {"127.0.0.1": ["alpha", "beta"]},
     }
     policy.update(changes)
@@ -103,6 +104,15 @@ def saturation_worker(raw, directory, port, events):
     events.put((time.monotonic(), "close"))
 
 
+def state_lock_worker(directory, ready):
+    directory = Path(directory)
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with (directory / "state.lock").open("a+") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        ready.put("locked")
+        time.sleep(10)
+
+
 class FleetSSHGuardTests(unittest.TestCase):
     def setUp(self):
         # The repository's runtime intentionally blocks permanent deletion.
@@ -134,10 +144,11 @@ class FleetSSHGuardTests(unittest.TestCase):
         self.assertGreaterEqual(starts[2] - starts[1], 0.10)
 
     def test_aliases_share_weighted_failure_budget_and_callback_clears_it(self):
-        policy = self.policy(failure_window_seconds=1)
+        policy = self.policy(failure_window_seconds=1, min_interval_seconds=0.01)
         first = guard.admit_connection(policy, "alpha", self.server.port, self.directory)
         first.close()
-        with self.assertRaisesRegex(guard.GuardError, "admission wait timed out"):
+        time.sleep(0.02)
+        with self.assertRaisesRegex(guard.GuardError, "failure budget"):
             guard.admit_connection(policy, "127.0.0.1", self.server.port, self.directory)
         guard.authenticated(policy, "beta", self.directory, parent_pid=os.getppid())
         second = guard.admit_connection(policy, "127.0.0.1", self.server.port, self.directory)
@@ -165,7 +176,7 @@ class FleetSSHGuardTests(unittest.TestCase):
         process.terminate()
         process.join(3)
         self.assertNotEqual(process.exitcode, 0)
-        admission = guard.admit_connection(self.policy(max_connections=1, max_auth_tries=1, max_failures=9), "alpha", self.server.port, self.directory)
+        admission = guard.admit_connection(self.policy(max_connections=1, max_auth_tries=1, max_failures=9, wait_timeout_seconds=0.2), "alpha", self.server.port, self.directory)
         admission.close()
 
     def test_real_processes_never_exceed_global_connection_slots(self):
@@ -196,8 +207,48 @@ class FleetSSHGuardTests(unittest.TestCase):
             with self.assertRaises(guard.GuardError):
                 guard.admit_connection(self.policy(), "alpha", self.server.port, self.directory)
 
+    def test_default_zero_wait_rejects_pacing_and_budget_without_dialing(self):
+        pacing = self.policy(max_auth_tries=1, max_failures=9, min_interval_seconds=1)
+        first = guard.admit_connection(pacing, "alpha", self.server.port, self.directory)
+        first.close()
+        with mock.patch.object(guard.socket, "socket", side_effect=AssertionError("network attempted")):
+            with self.assertRaisesRegex(guard.GuardError, "pacing active"):
+                guard.admit_connection(pacing, "alpha", self.server.port, self.directory)
+
+        budget = self.policy(max_auth_tries=3, max_failures=5, min_interval_seconds=0.01)
+        other_directory = Path(self.temporary.name) / "budget-state"
+        first = guard.admit_connection(budget, "alpha", self.server.port, other_directory)
+        first.close()
+        time.sleep(0.02)
+        with mock.patch.object(guard.socket, "socket", side_effect=AssertionError("network attempted")):
+            with self.assertRaisesRegex(guard.GuardError, "failure budget"):
+                guard.admit_connection(budget, "alpha", self.server.port, other_directory)
+
+    def test_default_zero_wait_rejects_held_slot_and_state_lock_without_dialing(self):
+        raw = raw_policy(max_connections=1, max_auth_tries=1, max_failures=9, wait_timeout_seconds=0)
+        ready = multiprocessing.Queue()
+        holder = multiprocessing.Process(target=slot_worker, args=(raw, str(self.directory), self.server.port, ready))
+        holder.start()
+        self.assertEqual(ready.get(timeout=3), "admitted")
+        with mock.patch.object(guard.socket, "socket", side_effect=AssertionError("network attempted")):
+            with self.assertRaisesRegex(guard.GuardError, "slot unavailable"):
+                guard.admit_connection(self.policy(max_connections=1, max_auth_tries=1, max_failures=9), "alpha", self.server.port, self.directory)
+        holder.terminate()
+        holder.join(3)
+
+        other_directory = Path(self.temporary.name) / "locked-state"
+        lock_ready = multiprocessing.Queue()
+        holder = multiprocessing.Process(target=state_lock_worker, args=(str(other_directory), lock_ready))
+        holder.start()
+        self.assertEqual(lock_ready.get(timeout=3), "locked")
+        with mock.patch.object(guard.socket, "socket", side_effect=AssertionError("network attempted")):
+            with self.assertRaisesRegex(guard.GuardError, "state is busy"):
+                guard.admit_connection(self.policy(), "alpha", self.server.port, other_directory)
+        holder.terminate()
+        holder.join(3)
+
     def test_slow_dial_cannot_compress_the_next_start_interval(self):
-        policy = self.policy(max_auth_tries=1, max_failures=9, min_interval_seconds=0.08)
+        policy = self.policy(max_auth_tries=1, max_failures=9, min_interval_seconds=0.08, wait_timeout_seconds=0.3)
         real_socket = socket.socket
 
         class SlowSocket(real_socket):
@@ -214,7 +265,7 @@ class FleetSSHGuardTests(unittest.TestCase):
         self.assertGreaterEqual(time.monotonic() - first_started, 0.07)
 
     def test_interrupted_dial_requires_a_new_full_interval(self):
-        policy = self.policy(max_auth_tries=1, max_failures=9, min_interval_seconds=0.08)
+        policy = self.policy(max_auth_tries=1, max_failures=9, min_interval_seconds=0.08, wait_timeout_seconds=0.3)
         self.directory.mkdir()
         guard._write_state(self.directory, {"last_start": None, "dialing": time.monotonic(), "pending": []})
         started = time.monotonic()

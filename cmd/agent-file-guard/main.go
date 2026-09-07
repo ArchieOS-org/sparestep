@@ -19,6 +19,8 @@ func run(args []string) error {
 		return fmt.Errorf("usage: agent-file-guard hook [codex|claude|cursor|cursor-shell] | remove -- PATH | restore -- RECEIPT | install")
 	}
 	switch args[0] {
+	case "recycle":
+		return fileguard.Recycle(args[1:], os.Stdout, os.Stderr)
 	case "hook":
 		surface := "codex"
 		if len(args) > 1 {

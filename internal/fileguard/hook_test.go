@@ -73,7 +73,7 @@ func TestTrashSymlinkAliasRejectedWithoutFollowingTarget(t *testing.T) {
 
 func TestHookProtocolsAndMalformedInput(t *testing.T) {
 	for _, surface := range []string{"codex", "claude", "cursor-shell"} {
-		for _, input := range []string{`{"tool_name":"Bash","tool_input":{"command":"rm -rf data"}}`, `{`} {
+		for _, input := range []string{`{"tool_name":"Bash","tool_input":{"command":"find . -delete"}}`, `{`} {
 			var out bytes.Buffer
 			if err := Hook(strings.NewReader(input), &out, surface); err != nil {
 				t.Fatal(err)

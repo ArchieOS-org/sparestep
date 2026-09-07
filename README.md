@@ -77,6 +77,9 @@ one-shot-tally help|-h|--help
 
 ## Background work
 
+Ordinary shell removals use [Move to Trash with undo receipts](native-trash/README.md)
+through the file guard. Each successful move prints the exact restore command.
+
 For shared outbound SSH limits across the BoomPay and CISL2/A250 fleets, see
 [fleet SSH admission](FLEET-SSH.md). The full installer configures the local
 OpenSSH guard for both fleets.

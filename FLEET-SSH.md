@@ -20,9 +20,9 @@ The installer does not change those aliases' destinations or host keys.
 | TCP connection attempts per admitted invocation | 1 |
 | Reserved authentication failures per unconfirmed connection | 3 |
 | Failure threshold per destination | 5 within 600 seconds |
-| TCP connect timeout | 8 seconds |
+| TCP and OpenSSH connection setup timeout | 3 seconds |
 | Server login grace allowance | 30 seconds |
-| Maximum admission wait | 60 seconds |
+| Admission wait | None; unavailable capacity fails immediately |
 
 These are local operating limits. Both repositories configure `MaxAuthTries 3`,
 `MaxSessions 4`, `MaxStartups 10:30:60`, and Fail2ban with `maxretry = 5` and
@@ -37,10 +37,11 @@ not a reinterpretation of those server settings. See the
 
 Each connection reserves three possible authentication failures before dialing.
 An authenticated SSH client clears its reservation through `LocalCommand`.
-An unsuccessful or interrupted connection keeps its reservation for 638 seconds
+An unsuccessful or interrupted connection keeps its reservation for 633 seconds
 from admission: the ten-minute failure window plus connection and login grace.
 A second unconfirmed connection to the same IP would exceed the remaining
-failure budget, so the guard waits or exits without connecting.
+failure budget, so the guard exits immediately without connecting. The failure
+window is retained bookkeeping, not a sleep or command timeout.
 
 The proxy cannot inspect encrypted authentication messages. This reservation
 policy limits repeated unsuccessful connections; it does not measure failed key
@@ -72,10 +73,12 @@ python3 scripts/test-fleet-ssh-installer.py
 The installed guard's `status` command shows its policy and pending attempts.
 The guard never writes protocol diagnostics to standard output during proxy use.
 
-On September 7, 2026, nine limiter tests and four installer tests passed.
+On September 7, 2026, eleven limiter tests and four installer tests passed.
 Read-only `true` commands succeeded through the installed guard on BoomPay's
 `138.197.172.189` and A250's `137.184.166.201`. Both authentication callbacks
-cleared their reservations. The second connection waited for the shared pacing.
+cleared their reservations. The initial version waited for shared pacing;
+the current policy returns immediately when the next start is not yet allowed.
+The installed guard rejected a held state lock in 0.052 seconds without dialing.
 
 The older control aliases still resolve to `142.93.158.204` and `146.190.242.198`.
 Their checks respectively timed out and failed host-key verification. Those
