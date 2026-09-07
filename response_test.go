@@ -83,7 +83,7 @@ func TestGoalTransitionPassedRequiresMatchingGoalStatus(t *testing.T) {
 func TestUnknownEditResponseCannotVerifyOrFail(t *testing.T) {
 	responses := []any{map[string]any{}, map[string]any{"success": true}, nil}
 	for index, response := range responses {
-		dir := t.TempDir()
+		dir := retainedTestDir(t)
 		turn := "unknown-edit-" + string(rune('a'+index))
 		hook(t, dir, map[string]any{
 			"session_id": "s", "turn_id": turn, "hook_event_name": "PreToolUse",
@@ -110,8 +110,8 @@ func TestUnknownEditResponseCannotVerifyOrFail(t *testing.T) {
 }
 
 func TestSuccessfulNoOpEditDoesNotCreateVerifiedRevision(t *testing.T) {
-	dir := t.TempDir()
-	repo := t.TempDir()
+	dir := retainedTestDir(t)
+	repo := retainedTestDir(t)
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, output)
 	}
@@ -148,7 +148,7 @@ func TestSuccessfulNoOpEditDoesNotCreateVerifiedRevision(t *testing.T) {
 }
 
 func TestObservedWorktreeChangeCanConfirmOpaqueEditResponse(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	repo, appPath := committedTestRepo(t, "package app\n\nconst value = \"old\"\n")
 	hook(t, dir, map[string]any{
 		"session_id": "s", "turn_id": "opaque-edit", "hook_event_name": "PreToolUse",
@@ -200,7 +200,7 @@ func TestRecordedOutcome(t *testing.T) {
 }
 
 func TestUnknownTestResultNeverVerifiesEdit(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	hook(t, dir, map[string]any{
 		"session_id": "s", "turn_id": "unknown-test", "hook_event_name": "PreToolUse",
 		"tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "change"},
@@ -225,7 +225,7 @@ func TestUnknownTestResultNeverVerifiesEdit(t *testing.T) {
 }
 
 func TestKnownFailedCommandReportsFailed(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	hook(t, dir, map[string]any{
 		"session_id": "s", "turn_id": "failed-command", "hook_event_name": "PreToolUse",
 		"tool_name": "Bash", "tool_use_id": "command", "tool_input": map[string]any{"command": "false"},
@@ -241,7 +241,7 @@ func TestKnownFailedCommandReportsFailed(t *testing.T) {
 }
 
 func TestShellMutationIsActivityEvenAfterPassingCheck(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	hook(t, dir, map[string]any{
 		"session_id": "s", "turn_id": "shell-edit", "hook_event_name": "PreToolUse",
 		"tool_name": "Bash", "tool_use_id": "edit", "tool_input": map[string]any{"command": "sed -i s/old/new/ app.go"},
@@ -265,7 +265,7 @@ func TestShellMutationIsActivityEvenAfterPassingCheck(t *testing.T) {
 }
 
 func TestOpaqueCommandInvalidatesReadinessWithoutWorktreeSnapshot(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	repo, appPath := committedTestRepo(t, "package app\n\nconst value = \"old\"\n")
 	hook(t, dir, map[string]any{
 		"session_id": "s", "turn_id": "opaque-command", "hook_event_name": "PreToolUse",
@@ -306,8 +306,8 @@ func TestOpaqueCommandInvalidatesReadinessWithoutWorktreeSnapshot(t *testing.T) 
 }
 
 func TestMixedEditBypassDoesNotRemainVerifiedAfterShellMutation(t *testing.T) {
-	dir := t.TempDir()
-	repo := t.TempDir()
+	dir := retainedTestDir(t)
+	repo := retainedTestDir(t)
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, output)
 	}
@@ -369,7 +369,7 @@ func TestMixedEditBypassDoesNotRemainVerifiedAfterShellMutation(t *testing.T) {
 }
 
 func TestFailedShellMutationCannotBeRescuedByLaterPassingTest(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	repo, appPath := committedTestRepo(t, "package app\n\nconst value = \"old\"\n")
 	hook(t, dir, map[string]any{
 		"session_id": "s", "turn_id": "failed-shell-edit", "hook_event_name": "PreToolUse",
@@ -415,7 +415,7 @@ func TestFailedShellMutationCannotBeRescuedByLaterPassingTest(t *testing.T) {
 func TestShellChainedTestResultIsNotAuthoritative(t *testing.T) {
 	for _, command := range []string{"go test ./... || true", "go test ./... && sed -i s/old/new/ app.go"} {
 		t.Run(command, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := retainedTestDir(t)
 			hook(t, dir, map[string]any{
 				"session_id": "s", "turn_id": command, "hook_event_name": "PreToolUse",
 				"tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "change"},
@@ -444,7 +444,7 @@ func TestShellChainedTestResultIsNotAuthoritative(t *testing.T) {
 }
 
 func TestTestStartedBeforeEditCompletionCannotVerify(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	common := map[string]any{"session_id": "s", "turn_id": "overlap"}
 	hook(t, dir, map[string]any{
 		"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse",
@@ -480,7 +480,7 @@ func TestNewerTestResultWinsWhenCompletionsAreOutOfOrder(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := retainedTestDir(t)
 			hook(t, dir, map[string]any{
 				"session_id": "s", "turn_id": test.name, "hook_event_name": "PreToolUse",
 				"tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "change"},
@@ -511,7 +511,7 @@ func TestNewerTestResultWinsWhenCompletionsAreOutOfOrder(t *testing.T) {
 }
 
 func TestStaleEditResultCannotOverrideNewerObservedEdit(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	repo, appPath := committedTestRepo(t, "package app\n\nconst value = \"old\"\n")
 	for _, id := range []string{"older", "newer"} {
 		hook(t, dir, map[string]any{
@@ -545,8 +545,8 @@ func TestStaleEditResultCannotOverrideNewerObservedEdit(t *testing.T) {
 }
 
 func TestOrdinaryTestDoesNotRequireWorktreeSnapshots(t *testing.T) {
-	dir := t.TempDir()
-	repo := t.TempDir()
+	dir := retainedTestDir(t)
+	repo := retainedTestDir(t)
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, output)
 	}
@@ -573,7 +573,7 @@ func TestOrdinaryTestDoesNotRequireWorktreeSnapshots(t *testing.T) {
 		"session_id": "s", "turn_id": "snapshot-loss", "hook_event_name": "PreToolUse",
 		"tool_name": "Bash", "tool_use_id": "test", "cwd": repo, "tool_input": map[string]any{"command": "go test ./..."},
 	})
-	if err := os.Rename(filepath.Join(repo, ".git"), filepath.Join(repo, ".git-hidden")); err != nil {
+	if err := os.Rename(filepath.Join(repo, ".git", "HEAD"), filepath.Join(repo, ".git", "HEAD-hidden")); err != nil {
 		t.Fatal(err)
 	}
 	hook(t, dir, map[string]any{
@@ -598,7 +598,7 @@ func TestNewerDeliveryResultWinsWhenCompletionsAreOutOfOrder(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := retainedTestDir(t)
 			for _, id := range []string{"older", "newer"} {
 				hook(t, dir, map[string]any{
 					"session_id": "s", "turn_id": test.name, "hook_event_name": "PreToolUse",
@@ -623,7 +623,7 @@ func TestNewerDeliveryResultWinsWhenCompletionsAreOutOfOrder(t *testing.T) {
 
 func committedTestRepo(t *testing.T, contents string) (string, string) {
 	t.Helper()
-	repo := t.TempDir()
+	repo := retainedTestDir(t)
 	if output, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, output)
 	}

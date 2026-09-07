@@ -127,7 +127,7 @@ func TestCredentialWKDCacheHonorsTTLAndRemembersFailures(t *testing.T) {
 	now := time.Date(2026, 8, 30, 21, 0, 0, 0, time.UTC)
 	key := credentialWKDTestKey(t)
 	t.Run("success TTL and tamper resistance", func(t *testing.T) {
-		t.Setenv("ONE_SHOT_STATE_DIR", t.TempDir())
+		t.Setenv("ONE_SHOT_STATE_DIR", retainedTestDir(t))
 		calls := 0
 		fetch := func(time.Time) ([]byte, error) {
 			calls++
@@ -168,7 +168,7 @@ func TestCredentialWKDCacheHonorsTTLAndRemembersFailures(t *testing.T) {
 		}
 	})
 	t.Run("failure and forced refresh", func(t *testing.T) {
-		t.Setenv("ONE_SHOT_STATE_DIR", t.TempDir())
+		t.Setenv("ONE_SHOT_STATE_DIR", retainedTestDir(t))
 		calls := 0
 		available := false
 		fetch := func(time.Time) ([]byte, error) {
@@ -197,7 +197,7 @@ func TestCredentialWKDCacheHonorsTTLAndRemembersFailures(t *testing.T) {
 		}
 	})
 	t.Run("wrong key is a cached failure", func(t *testing.T) {
-		t.Setenv("ONE_SHOT_STATE_DIR", t.TempDir())
+		t.Setenv("ONE_SHOT_STATE_DIR", retainedTestDir(t))
 		_, wrongKey, _, _, _, _ := credentialFixtureEntity(t, now)
 		calls := 0
 		fetch := func(time.Time) ([]byte, error) {
@@ -217,9 +217,9 @@ func TestCredentialWKDCacheHonorsTTLAndRemembersFailures(t *testing.T) {
 }
 
 func TestCredentialWKDCacheSerializesConcurrentMisses(t *testing.T) {
-	stateDir := t.TempDir()
+	stateDir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", stateDir)
-	counterPath := filepath.Join(t.TempDir(), "fetch-count")
+	counterPath := filepath.Join(retainedTestDir(t), "fetch-count")
 	const processes = 4
 	commands := make([]*exec.Cmd, 0, processes)
 	outputs := make([]bytes.Buffer, processes)
@@ -345,7 +345,7 @@ func TestProductionCredentialMessageIsPinnedPGPMIME(t *testing.T) {
 }
 
 func TestCredentialSendRecordsMetadataAndNeverResubmits(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	now := time.Date(2026, 8, 30, 21, 0, 0, 0, time.UTC)
 	secret := []byte("send-sentinel-credential")
@@ -413,7 +413,7 @@ func TestCredentialSendRecordsMetadataAndNeverResubmits(t *testing.T) {
 }
 
 func TestCredentialSendPreservesUnknownOutcomeWithoutRetry(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	now := time.Date(2026, 8, 30, 21, 0, 0, 0, time.UTC)
 	secret := []byte("unknown-outcome-sentinel")
@@ -447,7 +447,7 @@ func TestCredentialSendPreservesUnknownOutcomeWithoutRetry(t *testing.T) {
 }
 
 func TestCredentialSendRejectsOversizeBeforeEncryptionOrTransport(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	sealCalls, transportCalls := 0, 0
 	deps := credentialSendDependencies{
@@ -488,7 +488,7 @@ func TestCredentialReceiverSubmitsOnceAndDeduplicates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stateDir := filepath.Join(t.TempDir(), "receiver")
+	stateDir := filepath.Join(retainedTestDir(t), "receiver")
 	deliveryCalls := 0
 	deps := credentialReceiveDependencies{
 		now: func() time.Time { return now },
@@ -643,7 +643,7 @@ func TestCredentialTransportArgumentsAreFixed(t *testing.T) {
 }
 
 func TestCredentialTransportRejectsCompanionCertificate(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	privateKey := filepath.Join(dir, "credential-mail_ed25519")
 	knownHosts := filepath.Join(dir, "known_hosts")
 	if err := os.WriteFile(privateKey, []byte("fixture-private-key"), 0o600); err != nil {

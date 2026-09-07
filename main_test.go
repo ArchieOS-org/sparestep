@@ -31,7 +31,7 @@ func hook(t *testing.T, dir string, input map[string]any) map[string]any {
 }
 
 func TestHookBookkeepingFailureDoesNotBreakToolUse(t *testing.T) {
-	statePath := filepath.Join(t.TempDir(), "not-a-directory")
+	statePath := filepath.Join(retainedTestDir(t), "not-a-directory")
 	if err := os.WriteFile(statePath, []byte("occupied"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestHookBookkeepingFailureDoesNotBreakToolUse(t *testing.T) {
 }
 
 func TestMechanicalTallyAndActivityScore(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	base := map[string]any{"session_id": "s", "turn_id": "t", "hook_event_name": "PreToolUse", "tool_name": "Bash"}
 	for i := 1; i <= 3; i++ {
 		base["tool_use_id"] = string(rune('a' + i))
@@ -74,7 +74,7 @@ func TestMechanicalTallyAndActivityScore(t *testing.T) {
 }
 
 func TestPreToolUseNeverDeniesCommands(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	commands := []string{
 		"go test ./...",
 		"one-shot-tally background record docs --cleanup true",
@@ -110,7 +110,7 @@ func TestStructuredResultIsAuthoritative(t *testing.T) {
 }
 
 func TestPlainTextResponseIsNotEvidence(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	common := map[string]any{"session_id": "s", "turn_id": "plain-response"}
 	for _, call := range []struct {
 		id      string
@@ -130,7 +130,7 @@ func TestPlainTextResponseIsNotEvidence(t *testing.T) {
 }
 
 func TestNoOpTestTokenCannotVerifyRevision(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	common := map[string]any{"session_id": "s", "turn_id": "fake"}
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "real edit"}})
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "fake-test", "tool_input": map[string]any{"command": "echo test"}})
@@ -158,7 +158,7 @@ func TestNoOpTestTokenCannotVerifyRevision(t *testing.T) {
 }
 
 func TestReadOnlyInspectionDoesNotEmitGenericPolicy(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	var out map[string]any
 	for i := 0; i < 8; i++ {
 		out = hook(t, dir, map[string]any{
@@ -174,7 +174,7 @@ func TestReadOnlyInspectionDoesNotEmitGenericPolicy(t *testing.T) {
 }
 
 func TestGoalModeCarriesAcrossTurnsAndClears(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	start := hook(t, dir, map[string]any{
 		"session_id": "goal-session", "turn_id": "start", "hook_event_name": "PreToolUse",
 		"tool_name": "functions.create_goal", "tool_use_id": "create",
@@ -249,7 +249,7 @@ func TestGoalModeUsesTheSameWorkloadAllowance(t *testing.T) {
 }
 
 func TestVerifiedStopAdvisesUntilShipItSucceeds(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	hook(t, dir, map[string]any{"session_id": "s", "turn_id": "stop", "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "e", "tool_input": map[string]any{"command": "patch"}})
 	hook(t, dir, map[string]any{"session_id": "s", "turn_id": "stop", "hook_event_name": "PostToolUse", "tool_name": "apply_patch", "tool_use_id": "e", "tool_response": map[string]any{"exit_code": 0}})
 	hook(t, dir, map[string]any{"session_id": "s", "turn_id": "stop", "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "test", "tool_input": map[string]any{"command": "go test ./..."}})
@@ -277,7 +277,7 @@ func TestVerifiedStopAdvisesUntilShipItSucceeds(t *testing.T) {
 }
 
 func TestUnknownDeliveryStopRemainsAdvisory(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	hook(t, dir, map[string]any{"session_id": "s", "turn_id": "unknown-delivery", "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "change"}})
 	hook(t, dir, map[string]any{"session_id": "s", "turn_id": "unknown-delivery", "hook_event_name": "PostToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_response": map[string]any{"exit_code": 0}})
 	hook(t, dir, map[string]any{"session_id": "s", "turn_id": "unknown-delivery", "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "test", "tool_input": map[string]any{"command": "go test ./..."}})
@@ -296,7 +296,7 @@ func TestUnknownDeliveryStopRemainsAdvisory(t *testing.T) {
 }
 
 func TestUnverifiedStopAdvisesThenVerifiedStopRemainsAdvisory(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	hook(t, dir, map[string]any{"session_id": "s", "turn_id": "continue", "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "change"}})
 	hook(t, dir, map[string]any{"session_id": "s", "turn_id": "continue", "hook_event_name": "PostToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_response": map[string]any{"exit_code": 0}})
 	out := hook(t, dir, map[string]any{"session_id": "s", "turn_id": "continue", "hook_event_name": "Stop", "last_assistant_message": "Done"})
@@ -319,7 +319,7 @@ func TestUnverifiedStopAdvisesThenVerifiedStopRemainsAdvisory(t *testing.T) {
 }
 
 func TestStopWithoutToolActivityDoesNotRecordVerifiedLifetime(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	beforeLife, beforeErr := loadLifetime()
 	if beforeErr != nil && !errors.Is(beforeErr, os.ErrNotExist) {
@@ -351,7 +351,7 @@ func TestStopWithoutToolActivityDoesNotRecordVerifiedLifetime(t *testing.T) {
 }
 
 func TestReadOnlyStatusReportsActivityWithoutClaimingVerification(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	hook(t, dir, map[string]any{
 		"session_id": "s", "turn_id": "read-only", "hook_event_name": "PreToolUse",
 		"tool_name": "Bash", "tool_use_id": "inspect", "tool_input": map[string]any{"command": "git status --short"},
@@ -381,7 +381,7 @@ func TestReadOnlyStatusReportsActivityWithoutClaimingVerification(t *testing.T) 
 }
 
 func TestPassiveWaitReportsActivityAndKeepsPenalty(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	out := hook(t, dir, map[string]any{
 		"session_id": "s", "turn_id": "passive", "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "wait", "tool_input": map[string]any{"command": "sleep 10"},
 	})
@@ -411,7 +411,7 @@ func TestPassiveWaitReportsActivityAndKeepsPenalty(t *testing.T) {
 }
 
 func TestAnyToolActivityIsObservedWithoutSemanticGuessing(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	for i, tool := range []string{"Bash", "collaborationspawn_agent", "mcp__database__query", "request_user_input"} {
 		hook(t, dir, map[string]any{
 			"session_id": "s", "turn_id": "activity", "hook_event_name": "PreToolUse",
@@ -428,7 +428,7 @@ func TestAnyToolActivityIsObservedWithoutSemanticGuessing(t *testing.T) {
 }
 
 func TestNamespacedEditRequiresVerification(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	hook(t, dir, map[string]any{
 		"session_id": "s", "turn_id": "namespaced-edit", "hook_event_name": "PreToolUse",
 		"tool_name": "functions.apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "change"},
@@ -481,7 +481,7 @@ func TestStandaloneTestCommandRejectsMaskedOrMutatingChains(t *testing.T) {
 }
 
 func TestLegacyStateDoesNotInferProgress(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	path := filepath.Join(dir, "legacy.json")
 	legacy := state{StateVersion: 2, SessionID: "s", TurnID: "legacy", TotalCalls: 5, CallCostUnits: 20}
 	b, err := json.Marshal(legacy)
@@ -501,7 +501,7 @@ func TestLegacyStateDoesNotInferProgress(t *testing.T) {
 }
 
 func TestStatusMigratesLegacyStateAndOmitsSuccessAlias(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	legacy := state{StateVersion: 3, SessionID: "s", TurnID: "legacy-status", TotalCalls: 1}
 	b, err := json.Marshal(legacy)
@@ -538,7 +538,7 @@ func TestStatusMigratesLegacyStateAndOmitsSuccessAlias(t *testing.T) {
 }
 
 func TestStatusPrefersLatestWorkingSessionOverNewerEmptyTurn(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	working := state{StateVersion: 4, SessionID: "working", TurnID: "worked", TotalCalls: 1, UpdatedAt: time.Now().Add(-time.Minute)}
 	empty := state{StateVersion: 4, SessionID: "empty", TurnID: "new-question", UpdatedAt: time.Now()}
@@ -678,7 +678,7 @@ func assertEmptyHookOutput(t *testing.T, output map[string]any) {
 }
 
 func TestSparkCallsAreDiscounted(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	for i := 0; i < 8; i++ {
 		hook(t, dir, map[string]any{"session_id": "s", "turn_id": "spark", "hook_event_name": "PreToolUse", "tool_name": "spawn_agent", "tool_use_id": fmt.Sprintf("spark-%d", i), "tool_input": map[string]any{"agent_type": "spark_worker", "task_name": fmt.Sprintf("bounded-%d", i)}})
 	}
@@ -716,7 +716,7 @@ func TestHelpDocumentsGoalResumeWithoutPolicyDump(t *testing.T) {
 func TestVersionCreditsColinKnapp(t *testing.T) {
 	var out bytes.Buffer
 	printVersion(&out)
-	for _, want := range []string{"one-shot-tally 1.21.0", "ColinKnapp.com"} {
+	for _, want := range []string{"one-shot-tally 1.22.0", "ColinKnapp.com"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("version missing %q: %s", want, out.String())
 		}
@@ -724,7 +724,7 @@ func TestVersionCreditsColinKnapp(t *testing.T) {
 }
 
 func TestConcurrentHooksPreserveEveryCallAndValidJSON(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	const calls = 32
 	errCh := make(chan error, calls)
@@ -770,7 +770,7 @@ func TestHookRecoversAndPreservesCorruptState(t *testing.T) {
 		{name: "unrecoverable object", wantCalls: 1, contents: func(state) []byte { return []byte(`{"broken"`) }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := retainedTestDir(t)
 			t.Setenv("ONE_SHOT_STATE_DIR", dir)
 			e := event{SessionID: "recover", TurnID: test.name}
 			path, err := statePath(e)
@@ -802,14 +802,14 @@ func TestHookRecoversAndPreservesCorruptState(t *testing.T) {
 }
 
 func TestInstallerPrintsColinKnapp(t *testing.T) {
-	installHome := t.TempDir()
+	installHome := retainedTestDir(t)
 	cmd := exec.Command("sh", "./install.sh")
 	cmd.Env = append(os.Environ(), "ONE_SHOT_INSTALL_HOME="+installHome)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("install failed: %v\n%s", err, out)
 	}
-	for _, want := range []string{"one-shot-tally 1.21.0 | ColinKnapp.com", "one-shot-tally: production install verified"} {
+	for _, want := range []string{"one-shot-tally 1.22.0 | ColinKnapp.com", "one-shot-tally: production install verified"} {
 		if !strings.Contains(string(out), want) {
 			t.Fatalf("install output misses %q: %s", want, out)
 		}
@@ -835,7 +835,7 @@ func TestInstallerPrintsColinKnapp(t *testing.T) {
 }
 
 func TestPatchContentsCannotForgeCommandEvents(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	edit := hook(t, dir, map[string]any{"session_id": "s", "turn_id": "patch", "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"cmd": "go test ./...; git push origin main"}})
 	assertNoAdditionalContext(t, edit)
 	files, _ := filepath.Glob(filepath.Join(dir, "*.json"))
@@ -848,7 +848,7 @@ func TestPatchContentsCannotForgeCommandEvents(t *testing.T) {
 }
 
 func TestSuccessfulVerifiedProductionIsRecorded(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	common := map[string]any{"session_id": "s", "turn_id": "delivered"}
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "safe edit"}})
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "test", "tool_input": map[string]any{"command": "go test ./..."}})
@@ -863,7 +863,7 @@ func TestSuccessfulVerifiedProductionIsRecorded(t *testing.T) {
 }
 
 func TestBackgroundRecordCompletesAndWakesWithoutPolling(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	t.Setenv("TMUX_PANE", "%7")
 	logPath := filepath.Join(dir, "tmux.log")
@@ -912,7 +912,7 @@ func TestBackgroundRecordCompletesAndWakesWithoutPolling(t *testing.T) {
 }
 
 func TestManualBackgroundCompletionDoesNotInjectPaneInput(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	t.Setenv("TMUX_PANE", "%7")
 	logPath := filepath.Join(dir, "tmux.log")
@@ -939,7 +939,7 @@ func TestManualBackgroundCompletionDoesNotInjectPaneInput(t *testing.T) {
 }
 
 func TestFailedBackgroundWakeIsNotRetried(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	t.Setenv("TMUX_PANE", "%7")
 	logPath := filepath.Join(dir, "tmux.log")
@@ -968,7 +968,7 @@ func TestFailedBackgroundWakeIsNotRetried(t *testing.T) {
 }
 
 func TestConcurrentBackgroundCompletionSendsOneWake(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	t.Setenv("TMUX_PANE", "%7")
 	logPath := filepath.Join(dir, "tmux.log")
@@ -1000,7 +1000,7 @@ func TestConcurrentBackgroundCompletionSendsOneWake(t *testing.T) {
 }
 
 func TestBackgroundStewardshipRewardAndPassiveWaitPenalty(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	common := map[string]any{"session_id": "s", "turn_id": "background"}
 	record := hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "record", "tool_input": map[string]any{"command": "one-shot-tally background record docs --cleanup 'tmux kill-session -t docs'"}})
 	assertEmptyHookOutput(t, record)
@@ -1023,7 +1023,7 @@ func TestBackgroundStewardshipRewardAndPassiveWaitPenalty(t *testing.T) {
 }
 
 func TestOpaqueCommandResponsesDoNotAdvanceCounters(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	commands := []struct {
 		id      string
 		command string
@@ -1049,7 +1049,7 @@ func TestOpaqueCommandResponsesDoNotAdvanceCounters(t *testing.T) {
 }
 
 func TestDetachedTmuxWithoutRecordStaysSilent(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	out := hook(t, dir, map[string]any{"session_id": "s", "turn_id": "tmux", "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "tmux", "tool_input": map[string]any{"command": "tmux new-session -d -s build 'make all'"}})
 	assertEmptyHookOutput(t, out)
 }
@@ -1067,7 +1067,7 @@ func TestPassivePollingIsPenalizedButOrdinaryReadIsNot(t *testing.T) {
 }
 
 func TestDeliveryContractChangesAreNotBlocked(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	patch := "*** Begin Patch\n*** Delete File: .woodpecker.yml\n*** Update File: README.md\n@@\n-Pushing main triggers .woodpecker.yml, which deploys after convergence.\n+Run deployment commands manually.\n*** End Patch"
 	out := hook(t, dir, map[string]any{"session_id": "s", "turn_id": "contract", "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "delete", "tool_input": map[string]any{"patch": patch}})
 	assertEmptyHookOutput(t, out)
@@ -1076,7 +1076,7 @@ func TestDeliveryContractChangesAreNotBlocked(t *testing.T) {
 func TestDirectDeliveryEntrypointRemovalIsNotBlocked(t *testing.T) {
 	for _, command := range []string{"rm scripts/ship.sh", "git rm -- deploy.sh", "rm .woodpecker.yml", "git rm .github/workflows/deploy.yml"} {
 		t.Run(command, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := retainedTestDir(t)
 			out := hook(t, dir, map[string]any{"session_id": "s", "turn_id": command, "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "delete", "tool_input": map[string]any{"command": command}})
 			assertEmptyHookOutput(t, out)
 		})
@@ -1084,13 +1084,13 @@ func TestDirectDeliveryEntrypointRemovalIsNotBlocked(t *testing.T) {
 }
 
 func TestSessionStartIsSilent(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	out := hook(t, dir, map[string]any{"session_id": "s", "turn_id": "guidance", "hook_event_name": "SessionStart"})
 	assertEmptyHookOutput(t, out)
 }
 
 func TestUserPromptSubmitIsSilent(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	ordinary := hook(t, dir, map[string]any{"session_id": "ordinary", "turn_id": "prompt", "hook_event_name": "UserPromptSubmit", "prompt": "Please finish the report"})
 	assertEmptyHookOutput(t, ordinary)
 	for index, prompt := range []string{"Use repository B, not repository A.", "Actually, switch from main to release.", "No, stop and recheck the repository."} {
@@ -1100,7 +1100,7 @@ func TestUserPromptSubmitIsSilent(t *testing.T) {
 }
 
 func TestPromptSilencePersistsAfterProgress(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	for _, prompt := range []string{"Stop, use the other repository.", "Wrong repository again."} {
 		hook(t, dir, map[string]any{"session_id": "s", "turn_id": prompt, "hook_event_name": "UserPromptSubmit", "prompt": prompt})
 	}
@@ -1111,7 +1111,7 @@ func TestPromptSilencePersistsAfterProgress(t *testing.T) {
 }
 
 func TestSixthCheckStaysSilent(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	var out map[string]any
 	for i := 1; i <= 6; i++ {
 		out = hook(t, dir, map[string]any{
@@ -1124,7 +1124,7 @@ func TestSixthCheckStaysSilent(t *testing.T) {
 }
 
 func TestHookOutputUsesPlainLanguage(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	var texts []string
 	texts = append(texts, hookAdditionalContext(hook(t, dir, map[string]any{"session_id": "session", "turn_id": "start", "hook_event_name": "SessionStart"})))
 	for index, prompt := range []string{"Use repository B, not repository A.", "Wrong repository again.", "No, stop and recheck the repository."} {
@@ -1153,7 +1153,7 @@ func TestHookOutputUsesPlainLanguage(t *testing.T) {
 }
 
 func TestRepeatedCallsStaySilentAndResetAfterProgress(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	for i := 1; i <= 7; i++ {
 		out := hook(t, dir, map[string]any{
 			"session_id": "s", "turn_id": "repeat", "hook_event_name": "PreToolUse",
@@ -1223,8 +1223,8 @@ func TestProductionInvocationClassification(t *testing.T) {
 func TestVerifiedStopClosesShipAndDeployLoop(t *testing.T) {
 	for _, withContract := range []bool{false, true} {
 		t.Run(fmt.Sprintf("contract-%v", withContract), func(t *testing.T) {
-			dir := t.TempDir()
-			repo := t.TempDir()
+			dir := retainedTestDir(t)
+			repo := retainedTestDir(t)
 			if out, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
 				t.Fatalf("git init: %v %s", err, out)
 			}
@@ -1280,7 +1280,7 @@ func TestVerifiedStopClosesShipAndDeployLoop(t *testing.T) {
 }
 
 func TestHookNeverSpawnsDeliveryCommands(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	marker := filepath.Join(dir, "delivery-spawned")
 	for _, name := range []string{"ship-it", "deploy-it"} {
 		script := filepath.Join(dir, name)
@@ -1302,7 +1302,7 @@ func TestHookNeverSpawnsDeliveryCommands(t *testing.T) {
 }
 
 func TestFailedEditCannotBecomeShipReady(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	common := map[string]any{"session_id": "s", "turn_id": "failed-edit"}
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "bad change"}})
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PostToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_response": map[string]any{"exit_code": 1}})
@@ -1326,7 +1326,7 @@ func TestOutOfOrderEditResultsFollowNewestRevision(t *testing.T) {
 		{"newest-passes", 0, 1, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := retainedTestDir(t)
 			common := map[string]any{"session_id": test.name, "turn_id": "concurrent-edits"}
 			hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "older", "tool_input": map[string]any{"patch": "older"}})
 			hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "newest", "tool_input": map[string]any{"patch": "newest"}})
@@ -1346,7 +1346,7 @@ func TestOutOfOrderEditResultsFollowNewestRevision(t *testing.T) {
 func TestFailedShipOrDeployGivesRecoveryCoaching(t *testing.T) {
 	for _, command := range []string{"ship-it", "deploy-it --commit abc --branch main"} {
 		t.Run(command, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := retainedTestDir(t)
 			common := map[string]any{"session_id": "s", "turn_id": command}
 			hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "change"}})
 			hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PostToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_response": map[string]any{"exit_code": 0}})
@@ -1356,7 +1356,7 @@ func TestFailedShipOrDeployGivesRecoveryCoaching(t *testing.T) {
 			hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "delivery", "tool_response": map[string]any{"exit_code": 1}})
 			out := hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "Stop"})
 			message := out["systemMessage"].(string)
-			if out["decision"] == "block" || !strings.Contains(message, "failed") || strings.Contains(strings.ToLower(message), "authorization") || strings.Contains(strings.ToLower(message), "trust") {
+			if out["decision"] != "block" || !strings.Contains(message, "failed") || strings.Contains(strings.ToLower(message), "authorization") || strings.Contains(strings.ToLower(message), "trust") {
 				t.Fatalf("failed delivery status was wrong: %#v", out)
 			}
 			out = hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "Stop", "stop_hook_active": true})
@@ -1368,7 +1368,7 @@ func TestFailedShipOrDeployGivesRecoveryCoaching(t *testing.T) {
 func TestFailedDeliveryWithoutLocalEditKeepsSpecificGuidance(t *testing.T) {
 	for _, command := range []string{"ship-it", "deploy-it --commit abc --branch main"} {
 		t.Run(command, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := retainedTestDir(t)
 			hook(t, dir, map[string]any{
 				"session_id": "s", "turn_id": command, "hook_event_name": "PreToolUse",
 				"tool_name": "Bash", "tool_use_id": "delivery", "tool_input": map[string]any{"command": command},
@@ -1389,7 +1389,7 @@ func TestFailedDeliveryWithoutLocalEditKeepsSpecificGuidance(t *testing.T) {
 func TestCorrectedDeliveryCanResumeAfterFailure(t *testing.T) {
 	for _, command := range []string{"ship-it", "deploy-it --commit abc --branch main"} {
 		t.Run(command, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := retainedTestDir(t)
 			common := map[string]any{"session_id": "s", "turn_id": command}
 			hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "change"}})
 			hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PostToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_response": map[string]any{"exit_code": 0}})
@@ -1411,7 +1411,7 @@ func TestCorrectedDeliveryCanResumeAfterFailure(t *testing.T) {
 }
 
 func TestSuccessfulDeployResolvesEarlierShipFailure(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	repo, _ := committedTestRepo(t, "package app\n")
 	headOutput, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD").Output()
 	if err != nil {
@@ -1419,28 +1419,30 @@ func TestSuccessfulDeployResolvesEarlierShipFailure(t *testing.T) {
 	}
 	head := strings.TrimSpace(string(headOutput))
 	common := map[string]any{"session_id": "s", "turn_id": "ship-then-deploy", "cwd": repo}
-	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "change"}})
-	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PostToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_response": map[string]any{"exit_code": 0}})
-	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "test", "tool_input": map[string]any{"command": "go test ./..."}})
-	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "test", "tool_response": map[string]any{"exit_code": 0}})
-	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "ship", "tool_input": map[string]any{"command": "ship-it"}})
-	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "ship", "tool_response": map[string]any{"exit_code": 1}})
-	blocked := hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "Stop"})
-	if blocked["decision"] == "block" || !strings.Contains(blocked["systemMessage"].(string), "ship-it failed") {
+	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "cwd": repo, "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "change"}})
+	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "cwd": repo, "hook_event_name": "PostToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_response": map[string]any{"exit_code": 0}})
+	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "cwd": repo, "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "test", "tool_input": map[string]any{"command": "go test ./..."}})
+	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "cwd": repo, "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "test", "tool_response": map[string]any{"exit_code": 0}})
+	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "cwd": repo, "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "ship", "tool_input": map[string]any{"command": "ship-it"}})
+	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "cwd": repo, "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "ship", "tool_response": map[string]any{"exit_code": 1}})
+	blocked := hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "cwd": repo, "hook_event_name": "Stop"})
+	if blocked["decision"] != "block" || !strings.Contains(blocked["systemMessage"].(string), "ship-it failed") {
 		t.Fatalf("failed ship-it was not advisory: %#v", blocked)
 	}
 	preDeploy := hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "cwd": repo, "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "deploy", "tool_input": map[string]any{"command": "deploy-it --commit " + head + " --branch main"}})
 	assertEmptyHookOutput(t, preDeploy)
-	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "deploy", "tool_response": map[string]any{"exit_code": 0}})
-	done := hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "Stop", "stop_hook_active": true})
-	assertEmptyHookOutput(t, done)
+	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "cwd": repo, "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "deploy", "tool_response": map[string]any{"exit_code": 0}})
+	done := hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "cwd": repo, "hook_event_name": "Stop", "stop_hook_active": true})
+	if done["decision"] == "block" || !strings.Contains(done["systemMessage"].(string), "INCREDIBLE WIN") {
+		t.Fatalf("recovery missing: %#v", done)
+	}
 	if !recoveredCurrentDeployment(loadTestState(t, dir)) {
 		t.Fatalf("successful deploy-it did not resolve earlier ship failure")
 	}
 }
 
 func TestLaterVerifiedEditRequiresNewShip(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	common := map[string]any{"session_id": "s", "turn_id": "second-edit"}
 	for _, id := range []string{"first", "second"} {
 		hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": id + "-edit", "tool_input": map[string]any{"patch": id}})
@@ -1459,7 +1461,7 @@ func TestLaterVerifiedEditRequiresNewShip(t *testing.T) {
 }
 
 func TestFailedShipCorrectiveEditStillAdvisesBeforeReverification(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	common := map[string]any{"session_id": "s", "turn_id": "delivery-recovery"}
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "change"}})
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PostToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_response": map[string]any{"exit_code": 0}})
@@ -1470,13 +1472,13 @@ func TestFailedShipCorrectiveEditStillAdvisesBeforeReverification(t *testing.T) 
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "fix", "tool_input": map[string]any{"patch": "fix"}})
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PostToolUse", "tool_name": "apply_patch", "tool_use_id": "fix", "tool_response": map[string]any{"exit_code": 0}})
 	out := hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "Stop"})
-	if out["decision"] == "block" || !strings.Contains(out["systemMessage"].(string), "ship-it failed") {
+	if out["decision"] != "block" || !strings.Contains(out["systemMessage"].(string), "ship-it failed") {
 		t.Fatalf("corrective edit lost unresolved delivery guidance: %#v", out)
 	}
 }
 
 func TestFailedProductionActionPersistsAfterUnrelatedSuccess(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	hook(t, dir, map[string]any{
 		"session_id": "s", "turn_id": "push-failure", "hook_event_name": "PreToolUse",
 		"tool_name": "Bash", "tool_use_id": "push", "tool_input": map[string]any{"command": "git push origin main"},
@@ -1501,7 +1503,7 @@ func TestFailedProductionActionPersistsAfterUnrelatedSuccess(t *testing.T) {
 }
 
 func TestNewPendingDeliveryInvalidatesOlderSuccess(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	common := map[string]any{"session_id": "s", "turn_id": "pending-delivery"}
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_input": map[string]any{"patch": "change"}})
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PostToolUse", "tool_name": "apply_patch", "tool_use_id": "edit", "tool_response": map[string]any{"exit_code": 0}})
@@ -1518,7 +1520,7 @@ func TestNewPendingDeliveryInvalidatesOlderSuccess(t *testing.T) {
 }
 
 func TestConcreteProgressResetsPassiveWaitTone(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	for i := 1; i <= 6; i++ {
 		hook(t, dir, map[string]any{"session_id": "s", "turn_id": "waits", "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": fmt.Sprintf("wait-%d", i), "tool_input": map[string]any{"command": fmt.Sprintf("sleep %d", i)}})
 	}
@@ -1530,7 +1532,7 @@ func TestConcreteProgressResetsPassiveWaitTone(t *testing.T) {
 
 func TestExternalMutationGetsTargetCheckWithoutBlocking(t *testing.T) {
 	for i, command := range []string{"ship-it", "deploy-it production", "curl -X DELETE https://vault.example/items/1"} {
-		dir := t.TempDir()
+		dir := retainedTestDir(t)
 		out := hook(t, dir, map[string]any{
 			"session_id": "s", "turn_id": fmt.Sprintf("target-%d", i), "hook_event_name": "PreToolUse",
 			"tool_name": "Bash", "tool_use_id": "action", "tool_input": map[string]any{"command": command},
@@ -1540,7 +1542,7 @@ func TestExternalMutationGetsTargetCheckWithoutBlocking(t *testing.T) {
 }
 
 func TestDuplicateSubagentAndFailedCheckEditsStaySilent(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	input := map[string]any{"agent_type": "explorer", "task_name": "scan", "message": "scan repo"}
 	hook(t, dir, map[string]any{"session_id": "s", "turn_id": "workers", "hook_event_name": "PreToolUse", "tool_name": "spawn_agent", "tool_use_id": "one", "tool_input": input})
 	duplicate := hook(t, dir, map[string]any{"session_id": "s", "turn_id": "workers", "hook_event_name": "PreToolUse", "tool_name": "spawn_agent", "tool_use_id": "two", "tool_input": input})
@@ -1557,7 +1559,7 @@ func TestDuplicateSubagentAndFailedCheckEditsStaySilent(t *testing.T) {
 }
 
 func TestActiveGoalIsNotReportedComplete(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	hook(t, dir, map[string]any{"session_id": "goal", "turn_id": "start", "hook_event_name": "PreToolUse", "tool_name": "functions.create_goal", "tool_use_id": "create", "tool_input": map[string]any{"objective": "finish"}})
 	hook(t, dir, map[string]any{"session_id": "goal", "turn_id": "start", "hook_event_name": "PostToolUse", "tool_name": "functions.create_goal", "tool_use_id": "create", "tool_response": map[string]any{"goal": map[string]any{"status": "active"}}})
 	out := hook(t, dir, map[string]any{"session_id": "goal", "turn_id": "later", "hook_event_name": "Stop"})
@@ -1602,7 +1604,7 @@ func TestGoalListAndResumeUseCodexHistoryReadOnly(t *testing.T) {
 		t.Fatalf("budgeted resume = %q err=%v", out.String(), err)
 	}
 
-	missing := filepath.Join(t.TempDir(), "missing.sqlite")
+	missing := filepath.Join(retainedTestDir(t), "missing.sqlite")
 	t.Setenv("ONE_SHOT_GOALS_DB", missing)
 	if err := goalCommand([]string{"list"}, &out); err == nil {
 		t.Fatal("missing goal database was accepted")
@@ -1613,7 +1615,7 @@ func TestGoalListAndResumeUseCodexHistoryReadOnly(t *testing.T) {
 }
 
 func TestCodexGoalsPathUsesActiveAccountAndExplicitOverride(t *testing.T) {
-	root := t.TempDir()
+	root := retainedTestDir(t)
 	codexHome := filepath.Join(root, "account")
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
 		t.Fatal(err)
@@ -1654,8 +1656,8 @@ func TestCodexGoalsPathUsesActiveAccountAndExplicitOverride(t *testing.T) {
 }
 
 func TestSessionStartReconcilesGoalFromActiveAccount(t *testing.T) {
-	dir := t.TempDir()
-	codexHome := t.TempDir()
+	dir := retainedTestDir(t)
+	codexHome := retainedTestDir(t)
 	db := testGoalsDB(t)
 	if err := os.Rename(db, filepath.Join(codexHome, "goals_1.sqlite")); err != nil {
 		t.Fatal(err)
@@ -1679,7 +1681,7 @@ func TestSessionStartReconcilesGoalFromActiveAccount(t *testing.T) {
 }
 
 func TestSessionStartReconcilesStaleGoalMarkerFromCodex(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	db := testGoalsDB(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	t.Setenv("ONE_SHOT_GOALS_DB", db)
@@ -1704,7 +1706,7 @@ func TestSessionStartReconcilesStaleGoalMarkerFromCodex(t *testing.T) {
 
 func testGoalsDB(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "goals.sqlite")
+	path := filepath.Join(retainedTestDir(t), "goals.sqlite")
 	schema := `CREATE TABLE thread_goals (
 		thread_id TEXT PRIMARY KEY NOT NULL,
 		goal_id TEXT NOT NULL,
@@ -1727,7 +1729,7 @@ func testGoalsDB(t *testing.T) string {
 }
 
 func TestTodoLifecycleIsDurableAndDeduplicated(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	var out bytes.Buffer
 	if err := todoCommand([]string{"add", "Investigate alternate transport", "--context", "Useful, but outside the current delivery goal"}, &out); err != nil {
@@ -1788,7 +1790,7 @@ func TestWorkloadAllowanceRewardsCompletionNotInflation(t *testing.T) {
 }
 
 func TestHookCountsSuccessfulTodoTransitions(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	common := map[string]any{"session_id": "s", "turn_id": "todo"}
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "add", "tool_input": map[string]any{"command": "one-shot-tally todo add 'later' --context 'outside goal'"}})
 	hook(t, dir, map[string]any{"session_id": common["session_id"], "turn_id": common["turn_id"], "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "add", "tool_response": map[string]any{"exit_code": 0}})
@@ -1801,7 +1803,7 @@ func TestHookCountsSuccessfulTodoTransitions(t *testing.T) {
 }
 
 func TestDurableWorkItemsDriveTheReportAcrossTurns(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	var out bytes.Buffer
 	if err := todoCommand([]string{"add", "First result", "--context", "part one"}, &out); err != nil {
@@ -1834,7 +1836,7 @@ func TestDurableWorkItemsDriveTheReportAcrossTurns(t *testing.T) {
 }
 
 func TestMaskedTodoCommandsDoNotChangePlanAccounting(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	command := "one-shot-tally todo add later --context outside || true"
 	pre := hook(t, dir, map[string]any{"session_id": "s", "turn_id": "masked", "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "add", "tool_input": map[string]any{"command": command}})
 	assertEmptyHookOutput(t, pre)
@@ -1861,7 +1863,7 @@ func TestDistinctAgentTasksExpandOnlyCoordinationAllowance(t *testing.T) {
 }
 
 func TestConcurrentTodoAddsPreserveEveryItem(t *testing.T) {
-	dir := t.TempDir()
+	dir := retainedTestDir(t)
 	t.Setenv("ONE_SHOT_STATE_DIR", dir)
 	const count = 16
 	errs := make(chan error, count)
@@ -1900,7 +1902,7 @@ func loadTestState(t *testing.T, dir string) state {
 	files, err := filepath.Glob(filepath.Join(dir, "*.json"))
 	var stateFiles []string
 	for _, file := range files {
-		if filepath.Base(file) != "lifetime.json" && filepath.Base(file) != "todos.json" && filepath.Base(file) != "background-jobs.json" {
+		if !strings.HasPrefix(filepath.Base(file), "blockers-") && filepath.Base(file) != "lifetime.json" && filepath.Base(file) != "todos.json" && filepath.Base(file) != "background-jobs.json" {
 			stateFiles = append(stateFiles, file)
 		}
 	}

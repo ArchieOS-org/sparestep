@@ -12,6 +12,7 @@ Copyright © 2026 [ColinKnapp.com](https://colinknapp.com). All rights reserved.
 - `ACTIVITY OBSERVED`: activity occurred without verified current edits.
 - `FAILED`: a recorded action or check has an explicit unresolved failure.
 - `VERIFIED`: the current edit completed and a later standalone local check passed without changing the Git-visible worktree.
+- `RECOVERED`: a delivery first failed, then the same operation later returned a matching structured success. The report marks this as `INCREDIBLE WIN` and gives the outcome grade 100. The efficiency score remains diagnostic.
 
 The activity score is diagnostic. It does not change the recorded outcome. The score uses a workload allowance instead of one fixed tool-call limit.
 
@@ -22,7 +23,12 @@ The base allowance is 30 weighted calls and three checks. Each accepted work ite
 - `SessionStart` and `UserPromptSubmit` return `{}`.
 - `PreToolUse` records calls and returns `{}`. It does not rewrite or approve a command.
 - `PostToolUse` records explicit structured results and returns `{}`. Plain output text is not proof of success.
-- The first `Stop` reports the detailed tally. A repeated `Stop` returns `{}`.
+- Native `DeliveryResult` events record the actual `ship-it` or `deploy-it` result.
+- Structured command metadata and native delivery receipts supply result evidence. Prose, quoted examples, printed markers, and JSON printed in command stdout cannot prove success. Native receipts use a cooperating local executable protocol, not an authenticated remote service.
+- Some Codex command hooks supply stdout without an exit status. Those results remain unknown. Native delivery reports its result directly after the repository command returns. A successful receipt must match a clean current checkout before it clears incomplete delivery.
+- Unresolved results persist by session and project across turns. The first terminal blocker claim that is observed at `Stop` gets one bounded `decision:block` response that asks for fact checking and recovery within the current authorization. Tool actions are never blocked.
+- A repeated unresolved `Stop` does not continue the blocker response, but the changed outcome remains visible. An unresolved delivery is `FAILED` with outcome grade 0.
+- Audit statements and quoted examples do not create blocker claims. The hook does not promise universal natural-language understanding.
 
 Standard mode and goal mode use the same workload allowance.
 
@@ -141,6 +147,8 @@ go test ./...
 ```
 
 The installer builds `~/.local/bin/one-shot-tally`, copies `SKILL.md` to `~/.codex/skills/one-shot-tally/SKILL.md`, and verifies the installed version. Re-run it after each upgrade.
+
+Use `./install.sh --tally-only` to build and copy only `one-shot-tally` and its skill, then verify version `1.22.0`. This mode does not reinstall the file guard or its profile. The default `./install.sh` behavior remains the full install.
 
 Installation does not enable hooks. Configure Codex to run the absolute installed path for the hook events you want. The supplied setup supports `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, and `Stop`.
 

@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-const binaryVersion = "1.21.0"
+const binaryVersion = "1.22.0"
 
 var (
 	// Test runners must begin a shell command segment. Matching a bare "test"
@@ -34,24 +34,29 @@ var (
 )
 
 const (
-	outcomeNoWork   = "NO OBSERVED WORK"
-	outcomeActivity = "ACTIVITY OBSERVED"
-	outcomeFailed   = "FAILED"
-	outcomeVerified = "VERIFIED"
+	outcomeNoWork    = "NO OBSERVED WORK"
+	outcomeActivity  = "ACTIVITY OBSERVED"
+	outcomeFailed    = "FAILED"
+	outcomeVerified  = "VERIFIED"
+	outcomeRecovered = "RECOVERED"
 )
 
 type event struct {
-	SessionID        string          `json:"session_id"`
-	TurnID           string          `json:"turn_id"`
-	HookEventName    string          `json:"hook_event_name"`
-	ToolName         string          `json:"tool_name"`
-	ToolUseID        string          `json:"tool_use_id"`
-	ToolInput        json.RawMessage `json:"tool_input"`
-	ToolResponse     json.RawMessage `json:"tool_response"`
-	StopHookActive   bool            `json:"stop_hook_active"`
-	LastAssistantMsg string          `json:"last_assistant_message"`
-	Prompt           string          `json:"prompt"`
-	CWD              string          `json:"cwd"`
+	SessionID         string          `json:"session_id"`
+	TurnID            string          `json:"turn_id"`
+	HookEventName     string          `json:"hook_event_name"`
+	ToolName          string          `json:"tool_name"`
+	ToolUseID         string          `json:"tool_use_id"`
+	ToolInput         json.RawMessage `json:"tool_input"`
+	ToolResponse      json.RawMessage `json:"tool_response"`
+	StopHookActive    bool            `json:"stop_hook_active"`
+	LastAssistantMsg  string          `json:"last_assistant_message"`
+	Prompt            string          `json:"prompt"`
+	CWD               string          `json:"cwd"`
+	DeliveryKind      string          `json:"delivery_kind,omitempty"`
+	DeliveryStatus    string          `json:"delivery_status,omitempty"`
+	DeliveryAttemptID string          `json:"delivery_attempt_id,omitempty"`
+	DeliveryCommit    string          `json:"delivery_commit,omitempty"`
 }
 
 type pendingCall struct {
@@ -75,6 +80,8 @@ type pendingCall struct {
 	WorktreeSnapshot   string    `json:"worktree_snapshot,omitempty"`
 	WorkingDirectory   string    `json:"working_directory,omitempty"`
 	Sequence           int       `json:"sequence,omitempty"`
+	OperationKey       string    `json:"operation_key,omitempty"`
+	OperationKind      string    `json:"operation_kind,omitempty"`
 }
 
 type state struct {
@@ -126,6 +133,7 @@ type state struct {
 	TodoFingerprints             map[string]int         `json:"todo_fingerprints"`
 	AgentFingerprints            map[string]int         `json:"agent_fingerprints"`
 	Pending                      map[string]pendingCall `json:"pending"`
+	Running                      map[string]pendingCall `json:"running,omitempty"`
 	LastTestPassed               bool                   `json:"last_test_passed"`
 	LastTestResultKnown          bool                   `json:"last_test_result_known"`
 	LastTestResultSequence       int                    `json:"last_test_result_sequence"`
@@ -149,6 +157,21 @@ type state struct {
 	LastCallResultSequence       int                    `json:"last_call_result_sequence"`
 	RecordedInLifetime           bool                   `json:"recorded_in_lifetime"`
 	GoalScoped                   bool                   `json:"goal_scoped"`
+	CWD                          string                 `json:"cwd,omitempty"`
+	OpenBlockers                 int                    `json:"open_blockers,omitempty"`
+	UnsupportedBlockers          int                    `json:"unsupported_blockers,omitempty"`
+	VerifiedRecoveries           int                    `json:"verified_recoveries,omitempty"`
+	RecoveredThisTurn            bool                   `json:"recovered_this_turn,omitempty"`
+	AuditOnly                    bool                   `json:"audit_only,omitempty"`
+	LastFailedOperation          string                 `json:"last_failed_operation,omitempty"`
+	LastFailedProject            string                 `json:"last_failed_project,omitempty"`
+	NativeDeliveryKnown          bool                   `json:"native_delivery_known,omitempty"`
+	NativeDeliverySucceeded      bool                   `json:"native_delivery_succeeded,omitempty"`
+	NativeDeliveryKind           string                 `json:"native_delivery_kind,omitempty"`
+	NativeDeliveryAttemptID      string                 `json:"native_delivery_attempt_id,omitempty"`
+	NativeDeliveryProject        string                 `json:"native_delivery_project,omitempty"`
+	LastStopReport               string                 `json:"last_stop_report,omitempty"`
+	LastUnknownResponseShape     string                 `json:"last_unknown_response_shape,omitempty"`
 }
 
 type backgroundJob struct {
@@ -198,6 +221,8 @@ type codexGoal struct {
 
 type hookOutput struct {
 	SystemMessage string `json:"systemMessage,omitempty"`
+	Decision      string `json:"decision,omitempty"`
+	Reason        string `json:"reason,omitempty"`
 }
 
 func main() {
@@ -284,7 +309,11 @@ func printHelp(w io.Writer) {
 
 func runHook(r io.Reader, w io.Writer) error {
 	var e event
-	if err := json.NewDecoder(r).Decode(&e); err != nil {
+	data, readErr := io.ReadAll(io.LimitReader(r, 4<<20))
+	if readErr != nil {
+		return readErr
+	}
+	if err := json.Unmarshal(data, &e); err != nil {
 		if errors.Is(err, io.EOF) {
 			return writeJSON(w, hookOutput{})
 		}
@@ -305,13 +334,15 @@ func runHook(r io.Reader, w io.Writer) error {
 		return postToolUse(e, w)
 	case "Stop":
 		return stop(e, w)
+	case "DeliveryResult":
+		return deliveryResult(e, w)
 	default:
 		return writeJSON(w, hookOutput{})
 	}
 }
 
 func userPromptSubmit(e event, w io.Writer) error {
-	return writeJSON(w, hookOutput{})
+	return recordPromptContext(e, w)
 }
 
 func deliveryInvocations(command string) (shipping, deploying bool) {
@@ -417,6 +448,11 @@ func preToolUse(e event, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if e.CWD != "" {
+		s.CWD = e.CWD
+	} else {
+		e.CWD = s.CWD
+	}
 	goalActive, err := sessionGoalActive(e.SessionID)
 	if err != nil {
 		return err
@@ -426,10 +462,34 @@ func preToolUse(e event, w io.Writer) error {
 		s.GoalScoped = true
 	}
 	command := commandFrom(e.ToolInput)
+	if strings.Contains(strings.ToLower(e.ToolName), "write_stdin") {
+		if pending, ok := s.Running[inputExecutionSession(e.ToolInput)]; ok {
+			delete(s.Running, inputExecutionSession(e.ToolInput))
+			s.TotalCalls++
+			s.CallCostUnits += 4
+			s.ToolCounts[e.ToolName]++
+			s.Pending[e.ToolUseID] = pending
+			if err := save(p, s); err != nil {
+				return err
+			}
+			return writeJSON(w, hookOutput{})
+		}
+	}
 	isEdit := isEditTool(e.ToolName)
 	isCommand := isCommandTool(e.ToolName)
 	isTest := isCommand && testRE.MatchString(command) && standaloneTestCommand(command)
 	isShipping, isDeploying := deliveryInvocations(command)
+	operationKey, operationKind := "", ""
+	if isCommand {
+		encodedCommand, _ := json.Marshal(command)
+		operationKey, operationKind = fingerprint("command", encodedCommand), "work"
+		if isShipping {
+			operationKey, operationKind = "ship", "ship"
+		}
+		if isDeploying || isShipping && deployContractPresent(e.CWD) {
+			operationKey, operationKind = "deploy", "deploy"
+		}
+	}
 	isProduction := isCommand && productionInvocation(command, isShipping, isDeploying)
 	isRead := readRE.MatchString(command)
 	isPassiveWait := passiveWait(e, command)
@@ -470,6 +530,7 @@ func preToolUse(e event, w io.Writer) error {
 		}
 	}
 	if isEdit {
+		s.NativeDeliveryKnown = false
 		s.Revision++
 		s.InspectionStreak = 0
 	} else if isOpaqueMutation && s.Revision > 0 {
@@ -520,10 +581,13 @@ func preToolUse(e event, w io.Writer) error {
 		worktreeSnapshot, worktreeKnown = gitWorktreeSnapshot(e.CWD)
 	}
 	if e.ToolUseID != "" {
-		s.Pending[e.ToolUseID] = pendingCall{Test: isTest, Production: isProduction, Revision: s.Revision, StartedAt: time.Now().UTC(), RepeatedTest: repeatedTest, BackgroundRecord: isBackgroundRecord, BackgroundComplete: isBackgroundComplete, TodoAdd: isTodoAdd, TodoDone: isTodoDone, GoalTransition: goalChange, Edit: isEdit, Shipping: isShipping, Deploying: isDeploying, OpaqueMutation: isOpaqueMutation, DeployCommitMatch: deployCommitMatch, TestEligible: isTest && currentEditReady(s) && !hasPendingEdit(s), WorktreeKnown: worktreeKnown, WorktreeSnapshot: worktreeSnapshot, WorkingDirectory: e.CWD, Sequence: s.TotalCalls}
+		s.Pending[e.ToolUseID] = pendingCall{Test: isTest, Production: isProduction, Revision: s.Revision, StartedAt: time.Now().UTC(), RepeatedTest: repeatedTest, BackgroundRecord: isBackgroundRecord, BackgroundComplete: isBackgroundComplete, TodoAdd: isTodoAdd, TodoDone: isTodoDone, GoalTransition: goalChange, Edit: isEdit, Shipping: isShipping, Deploying: isDeploying, OpaqueMutation: isOpaqueMutation, DeployCommitMatch: deployCommitMatch, TestEligible: isTest && currentEditReady(s) && !hasPendingEdit(s), WorktreeKnown: worktreeKnown, WorktreeSnapshot: worktreeSnapshot, WorkingDirectory: e.CWD, Sequence: s.TotalCalls, OperationKey: operationKey, OperationKind: operationKind}
 	}
 	if repeats == 4 {
 		s.RepeatedWarnings++
+	}
+	if err := refreshBlockers(&s, e); err != nil {
+		return err
 	}
 	if err := save(p, s); err != nil {
 		return err
@@ -550,7 +614,25 @@ func postToolUse(e event, w io.Writer) error {
 	resultKnown, resultSucceeded := false, false
 	if ok {
 		delete(s.Pending, e.ToolUseID)
-		resultKnown, resultSucceeded = explicitResponseResult(e.ToolResponse)
+		if nativeResponseTool(e.ToolName) {
+			if executionID := nativeRunningSession(e.ToolResponse); executionID != "" {
+				s.Running[executionID] = pending
+				if err := save(p, s); err != nil {
+					return err
+				}
+				return writeJSON(w, hookOutput{})
+			}
+		}
+		resultKnown, resultSucceeded = hookResponseResult(e.ToolName, e.ToolResponse)
+		if !resultKnown {
+			s.LastUnknownResponseShape = responseShape(e.ToolResponse)
+		}
+		currentOperation := !(pending.Shipping && pending.Sequence < s.LastShipResultSequence || pending.Deploying && pending.Sequence < s.LastDeployResultSequence)
+		if currentOperation {
+			if err := recordOperationResult(&s, e, pending, resultKnown, resultSucceeded); err != nil {
+				return err
+			}
+		}
 		commandPassed := resultKnown && resultSucceeded
 		if resultKnown && pending.Sequence >= s.LastCallResultSequence {
 			s.LastCallResultKnown = true
@@ -680,6 +762,9 @@ func postToolUse(e event, w io.Writer) error {
 			}
 		}
 	}
+	if err := refreshBlockers(&s, e); err != nil {
+		return err
+	}
 	if err := save(p, s); err != nil {
 		return err
 	}
@@ -699,6 +784,17 @@ func stop(e event, w io.Writer) error {
 	defer func() { _ = unlock() }()
 	s, err := loadState(p, e.SessionID, e.TurnID)
 	if err != nil {
+		return err
+	}
+	if e.CWD == "" {
+		e.CWD = s.CWD
+	} else {
+		s.CWD = e.CWD
+	}
+	if err := recordTerminalBlocker(&s, e); err != nil {
+		return err
+	}
+	if err := refreshBlockers(&s, e); err != nil {
 		return err
 	}
 	if err := reconcilePlan(&s, e.CWD); err != nil {
@@ -726,10 +822,18 @@ func stop(e event, w io.Writer) error {
 			return err
 		}
 	}
-	if e.StopHookActive {
+	if e.StopHookActive && (s.LastStopReport == message || s.OpenBlockers == 0 && !s.RecoveredThisTurn) {
 		return writeJSON(w, hookOutput{})
 	}
-	return writeJSON(w, hookOutput{SystemMessage: message})
+	out, err := blockerOutput(e, s, message)
+	if err != nil {
+		return err
+	}
+	s.LastStopReport = message
+	if err := save(p, s); err != nil {
+		return err
+	}
+	return writeJSON(w, out)
 }
 
 func closingLoop(s state, deployContract bool) string {
@@ -811,10 +915,21 @@ func reportLine(s state) string {
 	if !hasRecordedActivity(s) {
 		score = "N/A (no observed work)"
 	}
-	return fmt.Sprintf("Recorded outcome: %s\nMode: %s\nTool calls: %d total; %d Spark; %s weighted; %d allowed\nChecks: %d total; %d passed; %d failed; %d unknown; %d allowed; %s elapsed; %s repeated\nWork items: %d planned; %d completed; %d open; %d add attempts; %d repeated adds; %d failed adds; %d unknown adds\nDelegation: %d calls; %d distinct tasks; %d Spark; %d repeated calls\nDelivery: %d completed; %d shipped; %d deployed\nBackground: %d recorded; %d completed; %d passive waits\nActivity score: %s", recordedOutcome(s), mode, s.TotalCalls, s.SparkCalls, formatCallUnits(s.CallCostUnits), callAllowance, s.Tests, s.TestPasses, s.TestFailures, unknownTests(s), checkAllowance, formatMillis(s.TotalTestMillis), formatMillis(s.RedundantTestMillis), planItems(s), planCompleted(s), openTodos(s), planAddAttempts(s), planRepeatedAdds(s), s.TodoAddFailures, s.TodoAddUnknown, s.AgentCalls, s.DistinctAgentTasks, s.SparkCalls, s.RepeatedAgentCalls, s.ProductionCompletions, s.ShipCompletions, s.DeployCompletions, s.BackgroundRecords, s.BackgroundCompletions, s.PassiveWaits, score)
+	report := fmt.Sprintf("Recorded outcome: %s\nMode: %s\nTool calls: %d total; %d Spark; %s weighted; %d allowed\nChecks: %d total; %d passed; %d failed; %d unknown; %d allowed; %s elapsed; %s repeated\nWork items: %d planned; %d completed; %d open; %d add attempts; %d repeated adds; %d failed adds; %d unknown adds\nDelegation: %d calls; %d distinct tasks; %d Spark; %d repeated calls\nDelivery: %d completed; %d shipped; %d deployed\nBackground: %d recorded; %d completed; %d passive waits\nActivity score: %s", recordedOutcome(s), mode, s.TotalCalls, s.SparkCalls, formatCallUnits(s.CallCostUnits), callAllowance, s.Tests, s.TestPasses, s.TestFailures, unknownTests(s), checkAllowance, formatMillis(s.TotalTestMillis), formatMillis(s.RedundantTestMillis), planItems(s), planCompleted(s), openTodos(s), planAddAttempts(s), planRepeatedAdds(s), s.TodoAddFailures, s.TodoAddUnknown, s.AgentCalls, s.DistinctAgentTasks, s.SparkCalls, s.RepeatedAgentCalls, s.ProductionCompletions, s.ShipCompletions, s.DeployCompletions, s.BackgroundRecords, s.BackgroundCompletions, s.PassiveWaits, score)
+	if review := blockerReport(s); review != "" {
+		report += "\n" + review
+	}
+	if strings.HasPrefix(s.LastUnknownResponseShape, "string;") {
+		report += "\nEvidence: this command hook supplied output without a verified exit status. Its result remains unknown."
+	}
+	report += fmt.Sprintf("\nOutcome grade: %d/100", outcomeScore(s))
+	return report
 }
 
 func numericScore(s state) int {
+	if recordedOutcome(s) == outcomeFailed {
+		return 0
+	}
 	if s.TestFailures > 0 && !s.LastTestPassed {
 		return 0
 	}
@@ -923,10 +1038,13 @@ func unknownTests(s state) int {
 }
 
 func finalPassed(s state) bool {
-	return recordedOutcome(s) == outcomeVerified
+	return oneOf(recordedOutcome(s), outcomeVerified, outcomeRecovered)
 }
 
 func recordedOutcome(s state) string {
+	if s.OpenBlockers > 0 || s.NativeDeliveryKnown && !s.NativeDeliverySucceeded {
+		return outcomeFailed
+	}
 	_, deliveryAttempted, deliveryKnown, deliverySucceeded, _ := latestDeliveryResult(s)
 	if deliveryAttempted && deliveryKnown && !deliverySucceeded {
 		return outcomeFailed
@@ -940,10 +1058,22 @@ func recordedOutcome(s state) string {
 	if s.LastCallResultKnown && !s.LastCallSucceeded {
 		return outcomeFailed
 	}
+	if s.NativeDeliveryKnown && s.NativeDeliverySucceeded {
+		if s.RecoveredThisTurn {
+			return outcomeRecovered
+		}
+		return outcomeVerified
+	}
 	if deliveryAttempted && !deliveryKnown {
 		return outcomeActivity
 	}
+	if s.RecoveredThisTurn {
+		return outcomeRecovered
+	}
 	if verifiedCurrentRevision(s) {
+		if s.RecoveredThisTurn {
+			return outcomeRecovered
+		}
 		return outcomeVerified
 	}
 	if !hasRecordedActivity(s) {
@@ -957,6 +1087,12 @@ func verifiedCurrentRevision(s state) bool {
 }
 
 func requiredDeliveryPending(s state) bool {
+	if s.OpenBlockers > 0 {
+		return true
+	}
+	if s.NativeDeliveryKnown {
+		return !s.NativeDeliverySucceeded
+	}
 	if currentDeliveryComplete(s) {
 		return false
 	}
@@ -1400,6 +1536,9 @@ func normalizeState(s *state) {
 	}
 	if s.Pending == nil {
 		s.Pending = map[string]pendingCall{}
+	}
+	if s.Running == nil {
+		s.Running = map[string]pendingCall{}
 	}
 	if s.StateVersion < 2 {
 		for id, pending := range s.Pending {
@@ -2223,7 +2362,7 @@ func printLatestTo(w io.Writer, asJSON bool) error {
 	}
 	var states []state
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") || entry.Name() == "lifetime.json" || entry.Name() == "background-jobs.json" || entry.Name() == "todos.json" {
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), "blockers-") || !strings.HasSuffix(entry.Name(), ".json") || entry.Name() == "lifetime.json" || entry.Name() == "background-jobs.json" || entry.Name() == "todos.json" {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(dir, entry.Name()))
@@ -2253,7 +2392,7 @@ func printLatestTo(w io.Writer, asJSON bool) error {
 			activityScore = numericScore(s)
 		}
 		callAllowance, checkAllowance := workloadAllowance(s)
-		return writeJSON(w, map[string]any{"state": s, "outcome": recordedOutcome(s), "verified": finalPassed(s), "activity_score": activityScore, "call_allowance": callAllowance, "check_allowance": checkAllowance, "report": reportLine(s), "lifetime": life})
+		return writeJSON(w, map[string]any{"state": s, "outcome": recordedOutcome(s), "verified": finalPassed(s), "outcome_grade": outcomeScore(s), "activity_score": activityScore, "call_allowance": callAllowance, "check_allowance": checkAllowance, "report": reportLine(s), "lifetime": life})
 	}
 	fmt.Fprintln(w, reportLine(s))
 	if life.Runs > 0 {

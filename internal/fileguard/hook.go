@@ -17,7 +17,7 @@ var destructive = regexp.MustCompile(`(?i)(\b(rm|rmdir|unlink|srm|gfind)\b|\bfin
 var emptyTrash = regexp.MustCompile(`(?i)(\b(empty|delete|erase|clean)[^\n]{0,80}\btrash\b|\btrash\b[^\n]{0,80}\b(empty|delete|erase|clean)\b)`)
 var interactive = regexp.MustCompile(`(?i)(^|[;&|]\s*)(?:exec\s+)?(?:/[^\s]+/)?(ba|z|da|fi|k|c|tc)?sh\s*(?:-i\s*)?$`)
 
-const removalAdvice = "Permanent deletion is blocked. Use agent-file-guard remove -- PATH; retain the printed receipt and use agent-file-guard restore -- RECEIPT to undo it."
+const removalAdvice = "Permanent deletion is blocked. For ordinary files or directories, use macOS Move to Trash or the host OS Recycle Bin through its permitted native interface. If the session denies the operation, report the exact denial; do not bypass it or permanently delete the item."
 
 func TrashPath(path string) bool {
 	for _, part := range strings.FieldsFunc(strings.ToLower(path), func(r rune) bool { return r == '/' || r == '\\' }) {

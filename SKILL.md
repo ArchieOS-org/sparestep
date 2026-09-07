@@ -34,10 +34,19 @@ The hook records activity, checks, delivery, background work, work items, and su
 - `ACTIVITY OBSERVED`: activity without verified current edits.
 - `FAILED`: an explicit unresolved failure.
 - `VERIFIED`: the current edit completed and a later standalone local check passed.
+- `RECOVERED`: a failed delivery later has a matching structured success. The report shows `INCREDIBLE WIN` and outcome grade 100. Efficiency remains diagnostic.
 
 `SessionStart`, `UserPromptSubmit`, `PreToolUse`, and `PostToolUse` return `{}`. The hook does not change or approve commands.
 
-The first `Stop` reports the recorded facts. A repeated `Stop` returns `{}`.
+The first `Stop` reports the recorded facts. A repeated `Stop` returns `{}` unless the blocker or recovery report changed.
+
+Native `DeliveryResult` events record `ship-it` and `deploy-it` outcomes through a cooperating local executable protocol. Structured command metadata can also supply result evidence. Prose, quoted examples, printed markers, and JSON printed in command stdout cannot prove success.
+
+Some Codex command hooks supply stdout without an exit status. Those results remain unknown. Native delivery sends its result directly after the repository command returns. A successful receipt must match a clean current checkout before it clears incomplete delivery.
+
+Unresolved outcomes persist by session and project across turns. The first terminal blocker claim observed at `Stop` gets one bounded `decision:block` response that asks for fact checking and recovery within current authorization. Tool actions are never blocked. A repeated unresolved `Stop` does not continue the response, but the changed outcome remains visible. An unresolved delivery is `FAILED` with outcome grade 0.
+
+Audit statements and quoted examples do not create blocker claims. The hook does not promise universal natural-language understanding.
 
 The score uses a workload allowance. Each accepted work item expands the allowance once. Completed items include closure overhead. Distinct subagent tasks include coordination overhead. Repeated or failed additions do not expand the allowance.
 
@@ -93,5 +102,7 @@ go test ./...
 ```
 
 The installed version line includes `ColinKnapp.com`.
+
+Use `./install.sh --tally-only` to build and copy `one-shot-tally` and this skill, then verify version `1.22.0`. It does not reinstall the file guard or profile. The default installer still performs the full install.
 
 State defaults to `$HOME/.codex/state/one-shot-delivery`. Set `ONE_SHOT_STATE_DIR` to use another path.
