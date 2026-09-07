@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 
+if [ -f "${ONE_SHOT_INSTALL_HOME:-$HOME}/.config/one-shot-tally/disabled" ]; then
+    printf '%s\n' "one-shot-tally is temporarily disabled; installation skipped."
+    exit 0
+fi
+
 command -v sqlite3 >/dev/null 2>&1 || {
     echo "one-shot-tally: sqlite3 is required for goal history" >&2
     exit 1
