@@ -609,18 +609,22 @@ func TestVerifiedDeliveredBetterArgoScaleRunRemainsSuccess(t *testing.T) {
 	}
 }
 
-func TestUnverifiedAndFailedOutcomesRemainDistinct(t *testing.T) {
+func TestUnverifiedAndAdvisoryTestOutcomesRemainDistinct(t *testing.T) {
 	tests := []struct {
 		state state
 		want  string
 	}{
 		{state: state{TotalCalls: 1, Revision: 1}, want: outcomeActivity},
-		{state: state{TotalCalls: 1, Revision: 1, Tests: 1, TestFailures: 1, LastTestResultKnown: true}, want: outcomeFailed},
+		{state: state{TotalCalls: 1, Revision: 1, Tests: 1, TestFailures: 1, LastTestResultKnown: true}, want: outcomeActivity},
 	}
 	for _, test := range tests {
 		if got := recordedOutcome(test.state); got != test.want || finalPassed(test.state) {
 			t.Fatalf("outcome = %q, want %q: %#v", got, test.want, test.state)
 		}
+	}
+	failedTest := tests[1].state
+	if score := numericScore(failedTest); score == 0 || !strings.Contains(reportLine(failedTest), "Test advisory:") {
+		t.Fatalf("failed test was not advisory: score=%d report=%q", score, reportLine(failedTest))
 	}
 }
 

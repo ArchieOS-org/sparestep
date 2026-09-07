@@ -32,9 +32,16 @@ The hook records activity, checks, delivery, background work, work items, and su
 
 - `NO OBSERVED WORK`: no tool activity.
 - `ACTIVITY OBSERVED`: activity without verified current edits.
-- `FAILED`: an explicit unresolved failure.
-- `VERIFIED`: the current edit completed and a later standalone local check passed.
+- `FAILED`: an unresolved delivery, edit, or other non-test action failed, or the requested outcome was abandoned.
+- `VERIFIED`: native delivery succeeded for the current revision, or the current edit completed and a later standalone local check passed.
 - `RECOVERED`: a failed delivery later has a matching structured success. The report shows `INCREDIBLE WIN` and outcome grade 100. Efficiency remains diagnostic.
+
+Test failures are advisory. Keep them visible without automatically marking the
+requested outcome failed or overriding successful delivery. Compare each failed
+expectation with the requested behavior. Diagnose intentional changes,
+unintended defects, faulty tests, or environment problems; repair the relevant
+cause and continue. Failed tests do not become passing tests. Verify the actual
+deployment independently.
 
 `SessionStart`, `UserPromptSubmit`, and `PreToolUse` return `{}`. `PostToolUse` normally returns `{}`. A recognized native browser startup error adds recovery guidance. The hook does not change or approve commands.
 

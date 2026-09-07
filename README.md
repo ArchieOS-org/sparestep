@@ -10,11 +10,18 @@ Copyright © 2026 [ColinKnapp.com](https://colinknapp.com). All rights reserved.
 
 - `NO OBSERVED WORK`: no tool activity was recorded.
 - `ACTIVITY OBSERVED`: activity occurred without verified current edits.
-- `FAILED`: a recorded action or check has an explicit unresolved failure.
-- `VERIFIED`: the current edit completed and a later standalone local check passed without changing the Git-visible worktree.
+- `FAILED`: an unresolved delivery, edit, or other non-test action failed, or the requested outcome was abandoned.
+- `VERIFIED`: native delivery succeeded for the current revision, or the current edit completed and a later standalone local check passed without changing the Git-visible worktree.
 - `RECOVERED`: a delivery first failed, then the same operation later returned a matching structured success. The report marks this as `INCREDIBLE WIN` and gives the outcome grade 100. The efficiency score remains diagnostic.
 
 The activity score is diagnostic. It does not change the recorded outcome. The score uses a workload allowance instead of one fixed tool-call limit.
+
+Test failures are advisory. They remain in the check counts and report, but do
+not automatically mark the requested outcome failed or override successful
+delivery. Compare a failed expectation with the requested behavior: it may
+reflect an intentional change, an unintended defect, a faulty test, or an
+environment problem. Repair the relevant cause and continue. A failed test
+does not become a pass, and passing tests alone do not prove deployment.
 
 The base allowance is 30 weighted calls and three checks. Each accepted work item adds five calls and one check. Each completed item adds two calls. A distinct subagent task adds one call for coordination. The report uses at most 12 work items, seven added checks, and four subagent tasks. Repeated and failed additions reduce the score but do not expand the allowance.
 

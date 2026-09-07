@@ -183,11 +183,15 @@ func TestRecordedOutcome(t *testing.T) {
 	}{
 		{name: "empty_state_no_observed_work", state: state{}, expected: "NO OBSERVED WORK"},
 		{name: "total_calls_without_revision_activity", state: state{TotalCalls: 3}, expected: "ACTIVITY OBSERVED"},
-		{name: "known_latest_call_failure", state: state{LastTestResultKnown: true, LastTestPassed: false, Tests: 1, TestFailures: 1}, expected: "FAILED"},
+		{name: "failed_test_is_advisory", state: state{LastTestResultKnown: true, LastTestPassed: false, LastTestResultSequence: 1, LastCallResultKnown: true, LastCallSucceeded: false, LastCallResultSequence: 1, Tests: 1, TestFailures: 1}, expected: "ACTIVITY OBSERVED"},
+		{name: "default_sequences_do_not_hide_command_failure", state: state{LastTestResultKnown: true, LastTestPassed: false, LastCallResultKnown: true, LastCallSucceeded: false, Tests: 1, TestFailures: 1}, expected: "FAILED"},
+		{name: "failed_test_then_failed_command", state: state{LastTestResultKnown: true, LastTestPassed: false, LastTestResultSequence: 1, LastCallResultKnown: true, LastCallSucceeded: false, LastCallResultSequence: 2, Tests: 1, TestFailures: 1}, expected: "FAILED"},
+		{name: "failed_deployment_stays_failed", state: state{NativeDeliveryKnown: true, NativeDeliverySucceeded: false, LastTestResultKnown: true, LastTestPassed: false, LastTestResultSequence: 1, LastCallResultKnown: true, LastCallSucceeded: false, LastCallResultSequence: 1, Tests: 1, TestFailures: 1}, expected: "FAILED"},
+		{name: "successful_native_delivery_survives_failed_test", state: state{NativeDeliveryKnown: true, NativeDeliverySucceeded: true, LastTestResultKnown: true, LastTestPassed: false, LastTestResultSequence: 1, LastCallResultKnown: true, LastCallSucceeded: false, LastCallResultSequence: 1, Tests: 1, TestFailures: 1}, expected: "VERIFIED"},
 		{name: "edited_current_revision_with_passing_test", state: state{Revision: 1, LastEditResultKnown: true, LastEditSucceeded: true, LastEditResultRevision: 1, VerifiedRevision: 1, Tests: 1, TestPasses: 1, LastTestPassed: true, LastTestResultKnown: true}, expected: "VERIFIED"},
 		{name: "passing_test_before_edit_result_is_activity", state: state{Revision: 1, VerifiedRevision: 1, Tests: 1, TestPasses: 1, LastTestPassed: true, LastTestResultKnown: true}, expected: "ACTIVITY OBSERVED"},
 		{name: "unverified_edit", state: state{Revision: 1, LastEditResultKnown: true, LastEditSucceeded: true}, expected: "ACTIVITY OBSERVED"},
-		{name: "test_failure", state: state{Revision: 1, VerifiedRevision: 0, Tests: 2, TestPasses: 1, TestFailures: 1, LastTestPassed: false, LastTestResultKnown: true}, expected: "FAILED"},
+		{name: "test_failure", state: state{Revision: 1, VerifiedRevision: 0, Tests: 2, TestPasses: 1, TestFailures: 1, LastTestPassed: false, LastTestResultKnown: true}, expected: "ACTIVITY OBSERVED"},
 	}
 
 	for _, tt := range tests {
@@ -475,7 +479,7 @@ func TestNewerTestResultWinsWhenCompletionsAreOutOfOrder(t *testing.T) {
 		olderExit int
 		want      string
 	}{
-		{name: "newer_failure", newerExit: 1, olderExit: 0, want: outcomeFailed},
+		{name: "newer_failure", newerExit: 1, olderExit: 0, want: outcomeActivity},
 		{name: "newer_pass", newerExit: 0, olderExit: 1, want: outcomeVerified},
 	}
 	for _, test := range tests {

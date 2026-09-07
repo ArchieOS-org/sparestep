@@ -960,6 +960,9 @@ func reportLine(s state) string {
 	if strings.HasPrefix(s.LastUnknownResponseShape, "string;") {
 		report += "\nEvidence: this command hook supplied output without a verified exit status. Its result remains unknown."
 	}
+	if s.LastTestResultKnown && !s.LastTestPassed {
+		report += "\nTest advisory: the latest test failed. Use its output to classify intended behavior, a product defect, a test defect, or the test environment; it does not by itself change the recorded outcome."
+	}
 	report += fmt.Sprintf("\nOutcome grade: %d/100", outcomeScore(s))
 	return report
 }
@@ -968,10 +971,7 @@ func numericScore(s state) int {
 	if recordedOutcome(s) == outcomeFailed {
 		return 0
 	}
-	if s.TestFailures > 0 && !s.LastTestPassed {
-		return 0
-	}
-	if s.Revision > 0 && (s.Tests == 0 || s.LastTestResultKnown && (s.VerifiedRevision != s.Revision || !s.LastTestPassed)) {
+	if s.Revision > 0 && (s.Tests == 0 || s.LastTestResultKnown && s.VerifiedRevision != s.Revision) {
 		return 25
 	}
 	score := 100
@@ -1090,10 +1090,7 @@ func recordedOutcome(s state) string {
 	if s.LastEditResultKnown && !s.LastEditSucceeded {
 		return outcomeFailed
 	}
-	if s.LastTestResultKnown && !s.LastTestPassed {
-		return outcomeFailed
-	}
-	if s.LastCallResultKnown && !s.LastCallSucceeded {
+	if s.LastCallResultKnown && !s.LastCallSucceeded && !lastCallWasTest(s) {
 		return outcomeFailed
 	}
 	if s.NativeDeliveryKnown && s.NativeDeliverySucceeded {
@@ -1118,6 +1115,13 @@ func recordedOutcome(s state) string {
 		return outcomeNoWork
 	}
 	return outcomeActivity
+}
+
+// Test results share the command-result fields. A matching sequence identifies
+// a test as the last completed command without weakening a later real command
+// failure. Delivery failures are evaluated before this advisory classification.
+func lastCallWasTest(s state) bool {
+	return s.LastCallResultKnown && s.LastTestResultKnown && s.LastCallResultSequence > 0 && s.LastCallResultSequence == s.LastTestResultSequence
 }
 
 func verifiedCurrentRevision(s state) bool {

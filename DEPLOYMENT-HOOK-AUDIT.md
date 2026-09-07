@@ -2,6 +2,57 @@
 
 The repeated `Hook failed` reports combined a delivery failure with a missing result handoff. The old tally report ran before shipping and could report high activity while deployment remained incomplete. A Stop hook is an automatic end-of-turn command. It is not an approval requirement or evidence that production changed.
 
+## Latest policy and delivery observations
+
+At 19:42 UTC, the user clarified that Git delivery must remain mechanical:
+pull once per local day, then `git add .`, automatic commit, and push everything
+Git stages. Ship-it does not assess content or select files. A proposed
+conflict-state veto was removed before installation. The existing integration
+test confirms that deleted tracked files, staged files, and untracked files all
+reach the remote. Native hooks still own this flow.
+
+Tests are advisory evidence. The global instructions, installed ship-it skill,
+canonical installer guidance, and tracked operator-workspace instructions now
+say to classify failures as intentional changes, unintended defects, faulty
+tests, or environment problems, then repair the relevant cause and continue.
+The shared one-shot-delivery skill formerly said “Production Gate” and “no
+known relevant test failure”; those requirements have been replaced. Explicit
+unit and regression tests in the infrastructure source-controller deployment
+selectors now log their command and failure status without stopping deployment.
+A behavior test proves that a test exit of 23 continues to deployment, while an
+actual deployment exit of 37 still propagates. Legacy `.ship-it.json` verification
+settings are not read by the installed ship-it and do not gate its Git flow.
+
+Tally also contained a direct outcome veto: `recordedOutcome` returned `FAILED`
+for the latest failed test before considering successful native delivery.
+That test-only veto is removed. A matching recorded command sequence identifies
+the test result, so a later failed non-test command still counts as a failure.
+The report retains failed check counts and adds advisory diagnosis guidance.
+
+The last native infrastructure delivery exposed two more concrete failures:
+Git's autostash application left conflict markers even though pull returned
+zero, and an owned, empty legacy guard file had mode 0644 instead of 0600.
+The working agent resolved the dispatcher conflict while preserving upstream
+selectors. The lock helper now tightens that exact legacy file in place after
+checking ownership, type, link count, emptiness, and inode identity. It does not
+remove or replace the lock. The actual guard was repaired the same way.
+
+Garage revision `dd65bdcd9f2e5aa770b9c50c657c98e5152e017d` was uploaded and
+activated. Its deployment command exceeded the 300-second deadline during
+acceptance after HTTP and DNS failures. Subsequent read-only checks show the
+exact revision at `/version`, healthy `/health`, the expected 404 at `/examples`,
+all seven static assets matching source hashes, and one running Swarm task with
+the matching image and update state `completed`. This proves the observed live
+revision; it does not turn the timed-out command into a successful receipt.
+No second image upload was issued.
+
+SMSBridge's exact-revision recheck for
+`7d561352b15395fd61d1e28999ff953a711e43a9` returned exit 0 using its existing
+successful workflow. CISL2's newer revision
+`16a1c438074aae2a8353a1bc2ced22ffcb3ce8e4` still failed the actual backup-node
+readiness check; the known host connection refusal remains separate from test
+policy. Earlier observations below retain their original timestamps and revisions.
+
 ## Findings and repairs
 
 | Finding | Evidence | Result |
