@@ -1,0 +1,8 @@
+# sparestep-managed-skill: v1
+interface:
+  display_name: "Sparestep"
+  short_description: "Set up and inspect project activity capture"
+  default_prompt: "Use $sparestep for this project."
+
+policy:
+  allow_implicit_invocation: false

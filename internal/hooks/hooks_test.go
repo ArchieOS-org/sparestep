@@ -70,6 +70,36 @@ func TestDisconnectPreserves(t *testing.T) {
 		t.Fatal("still connected")
 	}
 }
+
+func TestReconnectReplacesOnlyOurOldCommand(t *testing.T) {
+	d := t.TempDir()
+	if _, err := Connect(d, "/old/sparestep", "/old/state"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Connect(d, "/new/sparestep", "/new/state"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(d, ".codex", "hooks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(b, &root); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range requiredEvents {
+		groups := root.Hooks[event]
+		if len(groups) != 1 || len(groups[0].Hooks) != 1 || contains(groups[0].Hooks[0].Command, "/old/") {
+			t.Fatalf("reconnect left duplicate or stale command for %s: %s", event, b)
+		}
+	}
+}
 func TestForeignCWD(t *testing.T) {
 	b, _ := Process(payload(t, map[string]any{"hook_event_name": "PreToolUse", "session_id": "s", "cwd": "/other", "command": "cat x"}), "/p", nil)
 	if b[0].Gap == "" {

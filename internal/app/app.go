@@ -24,10 +24,11 @@ import (
 	"github.com/ArchieOS-org/sparestep/internal/model"
 	"github.com/ArchieOS-org/sparestep/internal/store"
 	"github.com/ArchieOS-org/sparestep/internal/web"
+	"github.com/ArchieOS-org/sparestep/skills"
 	"github.com/mattn/go-isatty"
 )
 
-var Version = "0.1.0"
+var Version = "0.2.0"
 
 func defaultState() (string, error) {
 	if p := os.Getenv("SPARESTEP_STATE_DIR"); p != "" {
@@ -72,11 +73,37 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 	port := fs.Int("port", 7357, "Local browser port (0 chooses a free port)")
 	demo := fs.Bool("demo", false, "Use isolated example data")
 	days := fs.Int("days", 30, "Days of history to keep")
+	skillDir := fs.String("skill-dir", "", "Install the Codex skill in this folder")
+	readyFile := fs.String("ready-file", "", "Report process readiness file")
 	if e = fs.Parse(args); e != nil {
 		if errors.Is(e, flag.ErrHelp) {
 			return nil
 		}
 		return e
+	}
+	if cmd == "install-skill" {
+		binary, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		if *skillDir == "" {
+			base := os.Getenv("CODEX_HOME")
+			if base == "" {
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return err
+				}
+				base = filepath.Join(home, ".agents")
+			}
+			*skillDir = filepath.Join(base, "skills", "sparestep")
+		}
+		path, err := skills.Install(*skillDir, binary)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(out, "Sparestep is ready in Codex. Type / and choose Sparestep, or use $sparestep.")
+		fmt.Fprintln(out, "Skill:", path)
+		return nil
 	}
 	*project, e = filepath.Abs(*project)
 	if e != nil {
@@ -84,6 +111,16 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 	}
 	if p, err := filepath.EvalSymlinks(*project); err == nil {
 		*project = p
+	}
+	if cmd != "hook" {
+		if (cmd == "start" || cmd == "open") && *demo {
+			return errors.New("use sparestep serve --demo for example data")
+		}
+		if root, err := projectRoot(*project); err == nil {
+			*project = root
+		} else if cmd == "start" || cmd == "open" {
+			return err
+		}
 	}
 	*state, e = filepath.Abs(*state)
 	if e != nil {
@@ -98,7 +135,7 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 		return nil
 	}
 	switch cmd {
-	case "", "status", "review", "feedback", "draft", "link", "pause", "resume", "connect", "disconnect", "doctor", "serve", "demo", "prune":
+	case "", "status", "review", "feedback", "draft", "link", "pause", "resume", "connect", "disconnect", "doctor", "serve", "demo", "prune", "start", "open":
 	default:
 		return fmt.Errorf("unknown command %q; run sparestep help", cmd)
 	}
@@ -125,13 +162,15 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 		}
 	}
 	switch cmd {
+	case "start", "open":
+		return start(s, *project, *state, *port, cmd == "start", *jsonOutput, out)
 	case "", "status", "demo":
 		if cmd != "status" && terminal(in) {
 			return menu(s, *project, *state, in, out, errOut)
 		}
 		return printReport(s, *project, *jsonOutput, out)
 	case "serve":
-		return serve(s, *project, *state, *port, out)
+		return serveReady(s, *project, *state, *port, *readyFile, out)
 	case "connect":
 		binary, err := os.Executable()
 		if err != nil {
@@ -151,13 +190,30 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 		if e = hooks.Disconnect(*project); e != nil {
 			return e
 		}
+		if *jsonOutput {
+			return json.NewEncoder(out).Encode(startResult{Project: *project, Status: "disconnected", Message: "Recording is disconnected. Your saved reports remain available."})
+		}
 		fmt.Fprintln(out, "Sparestep connection removed. Saved reports remain available.")
 		return nil
 	case "doctor":
+		if *jsonOutput {
+			result, err := connectionResult(s, *project)
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(out).Encode(result)
+		}
 		return doctor(s, *project, *state, out)
 	case "pause", "resume":
 		if e = s.SetPaused(*project, cmd == "pause"); e != nil {
 			return e
+		}
+		if *jsonOutput {
+			result, err := connectionResult(s, *project)
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(out).Encode(result)
 		}
 		if cmd == "pause" {
 			fmt.Fprintln(out, "Recording paused. It will stay paused until you resume.")
@@ -363,7 +419,11 @@ func review(s *store.Store, project, id string, out io.Writer) error {
 func doctor(s *store.Store, project, dir string, out io.Writer) error {
 	ok, detail := hooks.ConnectionStatus(project)
 	fmt.Fprintln(out, "Project:", project)
-	fmt.Fprintln(out, "Connection:", detail)
+	if !ok {
+		fmt.Fprintln(out, "Connection: not installed. Use /sparestep in Codex to connect this project.")
+	} else {
+		fmt.Fprintln(out, "Connection:", detail)
+	}
 	if ok {
 		fmt.Fprintln(out, "If capture is missing, open /hooks in Codex to review/trust the entries. The project must be trusted and hooks enabled.")
 	}
@@ -532,6 +592,10 @@ func menu(s *store.Store, project, dir string, in io.Reader, out, errOut io.Writ
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
 
 func serve(s *store.Store, project, dir string, port int, out io.Writer) error {
+	return serveReady(s, project, dir, port, "", out)
+}
+
+func serveReady(s *store.Store, project, dir string, port int, readyFile string, out io.Writer) error {
 	if port < 0 || port > 65535 {
 		return errors.New("port must be between 0 and 65535")
 	}
@@ -549,6 +613,13 @@ func serve(s *store.Store, project, dir string, port int, out io.Writer) error {
 	}
 	token := hex.EncodeToString(secret)
 	actual := listener.Addr().(*net.TCPAddr).Port
+	if readyFile != "" {
+		endpoint := reportEndpoint{URL: fmt.Sprintf("http://127.0.0.1:%d/#token=%s", actual, token), PID: os.Getpid()}
+		if e := writeEndpoint(readyFile, endpoint); e != nil {
+			return e
+		}
+		defer removeEndpoint(readyFile, os.Getpid())
+	}
 	fmt.Fprintf(out, "Sparestep · %s\nBrowser address: http://127.0.0.1:%d/#token=%s\n", project, actual, token)
 	if strings.HasPrefix(project, "/example/") {
 		fmt.Fprintln(out, "EXAMPLE DATA. Nothing here describes your real work.")
@@ -588,6 +659,9 @@ func help(w io.Writer) {
 	fmt.Fprintln(w, `Sparestep — Help Codex do less busywork.
 
 Start here:
+  sparestep install-skill   Add /sparestep to Codex
+  sparestep start           Connect this worktree and open its report
+  sparestep open            Open or reuse this worktree's report
   sparestep                 Open the terminal guide and report
   sparestep demo            See an isolated example
   sparestep connect         Connect this project to Codex

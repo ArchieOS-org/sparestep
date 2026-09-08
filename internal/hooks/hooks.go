@@ -517,7 +517,10 @@ func Connect(project, binary, stateDir string) (string, error) {
 			if containsOwned(v, cmd) {
 				continue
 			}
-			hookMap[ev] = append(v.([]any), hookGroup(cmd))
+			// Updating the executable or state folder replaces our old handler.
+			// Neighboring hooks keep their original configuration.
+			cleaned, _ := removeOur(v, project)
+			hookMap[ev] = append(cleaned.([]any), hookGroup(cmd))
 			changed = true
 			continue
 		}

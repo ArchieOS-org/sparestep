@@ -2,7 +2,7 @@
 # Install a verified release binary without root or a compiler.
 set -eu
 
-version=${SPARESTEP_VERSION:-v0.1.0}
+version=${SPARESTEP_VERSION:-v0.2.0}
 install_dir=${SPARESTEP_INSTALL_DIR:-"$HOME/.local/bin"}
 case "$(uname -s)" in
   Linux) os=linux ;;
@@ -35,6 +35,6 @@ mkdir -p "$install_dir"
 install -m 0755 "$tmp/$asset" "$install_dir/sparestep.new"
 mv "$install_dir/sparestep.new" "$install_dir/sparestep"
 "$install_dir/sparestep" version
+"$install_dir/sparestep" install-skill
 printf '\nInstalled: %s/sparestep\n' "$install_dir"
-printf 'In your project, run: %s/sparestep\n' "$install_dir"
-printf 'Then choose Connect Codex. Installation alone does not enable recording.\n'
+printf 'In a Codex task for your project, type / and choose Sparestep.\n'

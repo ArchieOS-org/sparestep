@@ -19,6 +19,7 @@ Additional integration checks:
 ```sh
 python3 scripts/check-capture.py --binary dist/sparestep-linux-amd64
 python3 scripts/check-native-discovery.py --binary dist/sparestep-linux-amd64
+python3 scripts/check-onboarding.py --binary dist/sparestep-linux-amd64
 npm ci
 npm run test:browser
 ```
@@ -28,6 +29,8 @@ Native discovery requires Codex CLI and uses an isolated temporary configuration
 ## Architecture
 
 - `internal/hooks`: bounded Codex event normalization and reversible project connection.
+- `internal/codexsetup`: scoped setup through Codex's public hook catalog and configuration API.
+- `skills`: embedded, explicit Sparestep skill and safe local installation.
 - `internal/store`: SQLite observations, dispositions, drafts, reports, and conservative detection.
 - `internal/model`: versioned observation/report boundaries.
 - `internal/app`: terminal guide, commands, hook runner, browser listener, and isolated examples.
@@ -37,7 +40,7 @@ The browser server is optional. Hooks append directly to SQLite so recording doe
 
 ## Evidence boundaries
 
-Codex's actual project config must load and its hooks must be trusted. `connect` only installs the definitions; `/hooks` is the native review step. `doctor` reports whether events have actually reached the recorder. A successful configuration write is not successful capture.
+Codex's actual project config must load and its hooks must be trusted. The skill invokes `start`, which installs only Sparestep's project definitions and registers their exact hashes through the same native configuration API used by Codex's hook review. It preserves unrelated hooks and disabled settings. A separate setup process cannot prove that an already-open task reloaded its configuration; setup may ask the user to open a new task once. Unsupported clients or untrusted project layers retain a specific native setup step. The lower-level `connect` command still writes definitions only. `doctor` reports whether events have actually reached the recorder. A successful configuration write is not successful capture.
 
 The hook source may omit exit status. Printed output, printed JSON, and statements such as “done” do not turn unknown results into successes. Observed command durations and time between hook events have different provenance; the latter includes hook overhead and scheduling. The report never calls their sum guaranteed wall-clock savings.
 
@@ -57,7 +60,9 @@ Do not upload complete transcripts. Hook storage uses bounded, conservative comm
 
 ## Installation and removal
 
-`install.sh` accepts `SPARESTEP_VERSION`, `SPARESTEP_INSTALL_DIR`, and a local `SPARESTEP_RELEASE_DIR` for offline installs/testing. An upgrade replaces only the executable. Recheck native hook trust if the hook definition changes.
+`install.sh` accepts `SPARESTEP_VERSION`, `SPARESTEP_INSTALL_DIR`, and a local `SPARESTEP_RELEASE_DIR` for offline installs/testing. It installs the executable and the embedded skill. The skill lives in `~/.agents/skills/sparestep` by default, or `$CODEX_HOME/skills/sparestep` when that configuration directory is explicitly set. `sparestep install-skill --skill-dir FOLDER` selects an alternate final skill directory. Unowned files are preserved; managed updates keep a first backup. Upgrades keep recordings and feedback.
+
+`start` and `open` reuse an authenticated loopback report process per worktree. A short local file lock prevents duplicate launches. Private readiness files and logs live in the state folder's `reports` directory. No startup service is registered. Opening a report after reboot recreates its process. Other commands resolve the current Git worktree too; the hook recorder uses its configured project without running Git on each event.
 
 Disconnect each configured project before removing the executable. Disconnect preserves other hooks and saved history. To erase history, remove the dedicated state directory after closing the report. No system service or root installation is required. A foreground browser process can be run under the user's preferred session manager; it is not needed for capture.
 

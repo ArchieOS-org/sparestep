@@ -8,51 +8,45 @@ It runs locally on Linux, including a VM accessed only through SSH. Recording ma
 
 ![An example Sparestep report showing a recurring setup failure](docs/images/sparestep-example.png)
 
-## Try it
+## Start with one command
 
-Download the Linux installer from [the release](https://github.com/ArchieOS-org/sparestep/releases/tag/v0.1.0), then run:
+Download the Linux installer from [the release](https://github.com/ArchieOS-org/sparestep/releases/tag/v0.2.0), then run it once:
 
 ```sh
 sh install.sh
-~/.local/bin/sparestep demo
 ```
 
-The installer verifies the binary's checksum. It needs `curl` and `sha256sum`; it does not need root, a compiler, or a database server.
+In a Codex task for your project, type `/`, choose **Sparestep**, and send:
 
-Prefer a browser? Run:
-
-```sh
-~/.local/bin/sparestep serve --demo
+```text
+/sparestep
 ```
 
-Open the address it prints. Example data is labeled and kept separate from your recordings.
+Sparestep connects that project and opens its report. It handles its own hook setup through Codex's native configuration API. If your current task predates the connection, open a new Codex task once to load it. An unsupported or disabled setup gets one specific next step.
 
-## Connect your project
+Then use Codex normally. Use `/sparestep` again whenever you want the report; it reuses the existing report and preserves pause state.
 
-In the project where Codex runs:
+In Codex CLI, invoke the same skill with `$sparestep`. If it is missing from the selector, reopen Codex once. The installer adds the skill as well as the executable; it needs `curl` and `sha256sum`, with no root, compiler, or database server.
 
-```sh
-~/.local/bin/sparestep connect
-```
+## Stay in control
 
-Open Codex in that project. Review the project's hooks using `/hooks` and trust the Sparestep entries. This is Codex's own required review before hooks run. If the project is untrusted or hooks are disabled, Codex will not record its activity. [Codex hook setup](https://learn.chatgpt.com/docs/hooks)
+| In Codex | What happens |
+| --- | --- |
+| `/sparestep` | Connect this worktree and open its report |
+| `/sparestep status` | See whether activity has actually been recorded |
+| `/sparestep pause` | Pause recording until you resume |
+| `/sparestep resume` | Resume recording |
+| `/sparestep disconnect` | Remove this worktree's connection; keep saved reports |
 
-After a task, run:
-
-```sh
-~/.local/bin/sparestep doctor
-~/.local/bin/sparestep
-```
-
-The terminal guide lets you inspect findings, mark work necessary, dismiss or restore suggestions, and save issue drafts. `doctor` distinguishes an installed connection from recorded activity.
+Sparestep uses the current Git worktree, even when you work in a subfolder. Each separate worktree has its own connection and report. The skill runs only when requested; recording itself makes no model calls. Invoking the skill uses an ordinary Codex turn.
 
 ## Using a Linux VM?
 
 Run Sparestep on the VM where Codex runs. Everything works in the SSH terminal.
 
-To use your own computer's browser, run `sparestep serve` on the VM. Follow its SSH forwarding instruction **on your computer**, then open the printed browser address there. The VM needs no browser, desktop, GPU, or public web port. Records stay on the VM.
+The skill returns a real report link and opens it in Codex's browser panel when that capability is available. If your browser is on another computer without automatic port forwarding, forward the report's port over SSH. The VM needs no browser, desktop, GPU, or public web port. Records stay on the VM.
 
-Closing the report does not stop hook recording. Recording follows Codex; Sparestep does not keep Codex itself alive after an SSH disconnect or reboot.
+The report process survives the command that opened it. After a VM reboot, `/sparestep` opens it again. Closing a browser tab does not stop recording. Sparestep does not keep Codex itself alive after an SSH disconnect or reboot.
 
 ## What the preview can tell you
 
@@ -70,13 +64,14 @@ Repeated-check and repeated-read detectors require reliable unchanged-context ev
 
 Choose **Review issue draft**, edit the title and description, then download Markdown or open the draft in Linear. Nothing is submitted automatically. You can link an existing Linear issue instead. Opening Linear is never reported as a created issue.
 
-## Stay in control
+## Prefer the terminal?
 
 ```sh
-sparestep pause              # Stays paused across restarts
-sparestep resume
-sparestep disconnect         # Remove only the Sparestep project hooks
-sparestep prune --days 30    # Remove older observations
+sparestep start             # Connect this worktree and get its report link
+sparestep                   # Read the terminal report and review findings
+sparestep demo              # Explore isolated, labeled example data
+sparestep serve --demo      # Explore the browser with example data
+sparestep prune --days 30   # Remove older observations
 ```
 
 State lives under `~/.local/state/sparestep`, or `$XDG_STATE_HOME/sparestep`. Use `--state-dir` or `SPARESTEP_STATE_DIR` for a different location. Project options go before finding IDs; `sparestep help` shows examples.

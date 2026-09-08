@@ -33,6 +33,7 @@ func NewHandler(s *store.Store, project, token string) http.Handler {
 	m.HandleFunc("/assets/", h.asset)
 	m.HandleFunc("/api/auth", h.auth)
 	m.HandleFunc("/api/report", h.report)
+	m.HandleFunc("/api/health", h.health)
 	m.HandleFunc("/api/finding/disposition", h.disposition)
 	m.HandleFunc("/api/draft", h.draft)
 	m.HandleFunc("/api/issue-url", h.issueURL)
@@ -104,6 +105,18 @@ func (h *handler) session(r *http.Request) bool {
 	return ok
 }
 func (h *handler) authenticated(r *http.Request) bool { return h.bearer(r) || h.session(r) }
+func (h *handler) health(w http.ResponseWriter, r *http.Request) {
+	if !h.authenticated(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"project": h.project})
+}
 func (h *handler) auth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "method", 405)

@@ -6,3 +6,4 @@
 /.codex/hooks.json
 /.codex/hooks.json.bak
 /node_modules/
+__pycache__/
