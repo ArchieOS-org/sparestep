@@ -1,6 +1,6 @@
 {
   "name": "sparestep-browser-checks",
   "private": true,
-  "scripts": { "test:browser": "node scripts/check-browser.mjs" },
+  "scripts": { "test:browser": "node scripts/check-browser.mjs && node scripts/check-focus-browser.mjs" },
   "devDependencies": { "playwright": "1.63.0" }
 }

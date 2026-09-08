@@ -75,12 +75,12 @@ def main():
         assert discover(args.codex, project, config) == []
         subprocess.run([binary, "connect", "--project", str(project), "--state-dir", str(state)], check=True, stdout=subprocess.DEVNULL)
         configured = discover(args.codex, project, config)
-        required = {"sessionStart", "userPromptSubmit", "preToolUse", "postToolUse", "stop", "postCompact"}
+        required = {"sessionStart", "userPromptSubmit", "preToolUse", "postToolUse", "stop", "postCompact", "subagentStart", "subagentStop", "interrupt"}
         assert {hook["eventName"] for hook in configured} == required, configured
         assert all(hook["enabled"] and hook["trustStatus"] == "untrusted" for hook in configured)
         subprocess.run([binary, "disconnect", "--project", str(project), "--state-dir", str(state)], check=True, stdout=subprocess.DEVNULL)
         assert discover(args.codex, project, config) == []
-        print("PASS: Codex discovers all six hooks; native trust remains required; disconnect removes them.")
+        print("PASS: Codex discovers all required hooks; native trust remains required; disconnect removes them.")
         print("No model task or user configuration was changed.")
 
 

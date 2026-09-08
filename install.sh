@@ -2,7 +2,7 @@
 # Install a verified release binary without root or a compiler.
 set -eu
 
-version=${SPARESTEP_VERSION:-v0.2.0}
+version=${SPARESTEP_VERSION:-v0.3.0}
 install_dir=${SPARESTEP_INSTALL_DIR:-"$HOME/.local/bin"}
 case "$(uname -s)" in
   Linux) os=linux ;;

@@ -168,8 +168,9 @@ func availableReport(path, project string) (string, bool) {
 	defer response.Body.Close()
 	var report struct {
 		Project string `json:"project"`
+		Version string `json:"version"`
 	}
-	if response.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(response.Body, 8192)).Decode(&report) != nil || report.Project != project {
+	if response.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(response.Body, 8192)).Decode(&report) != nil || report.Project != project || report.Version != Version {
 		return "", false
 	}
 	return endpoint.URL, true

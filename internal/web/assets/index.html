@@ -27,6 +27,34 @@
       </div>
       <div id="notice" class="notice" role="status" aria-live="polite"></div>
 
+      <section id="focus-section" class="focus-section" aria-labelledby="focus-heading">
+        <div class="section-head">
+          <h2 id="focus-heading">Current task</h2>
+          <span id="focus-status" class="focus-status"></span>
+        </div>
+        <div id="focus-content"></div>
+      </section>
+
+      <section id="scope-section" class="scope-notice" aria-labelledby="scope-heading" hidden>
+        <div class="scope-heading">
+          <span class="scope-icon" aria-hidden="true">!</span>
+          <div>
+            <p class="eyebrow">SCOPE CHANGE</p>
+            <h2 id="scope-heading">Necessary work was added</h2>
+          </div>
+        </div>
+        <div id="scope-content"></div>
+      </section>
+
+      <section id="deferred-section" aria-labelledby="deferred-heading" hidden>
+        <div class="section-head">
+          <h2 id="deferred-heading">Deferred work</h2>
+          <span id="deferred-count" class="section-count"></span>
+        </div>
+        <p class="section-intro">Work discovered here stays durable while the current task continues.</p>
+        <div id="deferred"></div>
+      </section>
+
       <section class="summary" aria-label="Report summary">
         <div class="summary-item">
           <span id="checks">—</span>
@@ -44,26 +72,29 @@
         </div>
       </section>
 
-      <section aria-labelledby="open-heading">
-        <div class="section-head">
-          <h2 id="open-heading">Open findings</h2>
-          <span id="finding-count" class="section-count"></span>
-        </div>
-        <p class="section-intro">These are the clearest repeated patterns in the activity that was recorded.</p>
-        <div id="findings"></div>
-      </section>
+      <details class="details-panel">
+        <summary>Activity reports</summary>
+        <section aria-labelledby="open-heading">
+          <div class="section-head">
+            <h2 id="open-heading">Open findings</h2>
+            <span id="finding-count" class="section-count"></span>
+          </div>
+          <p class="section-intro">These are the clearest repeated patterns in the activity that was recorded.</p>
+          <div id="findings"></div>
+        </section>
 
-      <section id="history-section" aria-labelledby="history-heading" hidden>
-        <div class="section-head">
-          <h2 id="history-heading">Feedback history</h2>
-        </div>
-        <p class="section-intro">Necessary and dismissed findings stay here. Undo brings one back to your open list.</p>
-        <div id="history"></div>
-      </section>
+        <section id="history-section" aria-labelledby="history-heading" hidden>
+          <div class="section-head">
+            <h2 id="history-heading">Feedback history</h2>
+          </div>
+          <p class="section-intro">Necessary and dismissed findings stay here. Undo brings one back to your open list.</p>
+          <div id="history"></div>
+        </section>
 
-      <details class="evidence-panel">
-        <summary>Recorded evidence <span id="evidence-count"></span></summary>
-        <div id="evidence" class="evidence"></div>
+        <details class="evidence-panel">
+          <summary>Recorded evidence <span id="evidence-count"></span></summary>
+          <div id="evidence" class="evidence"></div>
+        </details>
       </details>
 
       <footer>Local report · data stays on this computer</footer>

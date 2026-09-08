@@ -28,7 +28,7 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-var Version = "0.2.0"
+var Version = "0.3.0"
 
 func defaultState() (string, error) {
 	if p := os.Getenv("SPARESTEP_STATE_DIR"); p != "" {
@@ -60,6 +60,12 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 	stateDir, e := defaultState()
 	if e != nil {
 		return e
+	}
+	if cmd == "focus" {
+		return runFocus(args, stateDir, in, out, errOut)
+	}
+	if cmd == "linear" {
+		return runLinear(args, stateDir, in, out, errOut)
 	}
 	cwd, e := os.Getwd()
 	if e != nil {
@@ -127,12 +133,7 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 		return e
 	}
 	if cmd == "hook" {
-		// Recording must never change tool permission or force another model turn.
-		defer fmt.Fprintln(out, "{}")
-		if e = recordHook(in, *state, *project); e != nil {
-			diagnostic(*state, e)
-		}
-		return nil
+		return runHook(in, out, *state, *project)
 	}
 	switch cmd {
 	case "", "status", "review", "feedback", "draft", "link", "pause", "resume", "connect", "disconnect", "doctor", "serve", "demo", "prune", "start", "open":
@@ -165,6 +166,12 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 	case "start", "open":
 		return start(s, *project, *state, *port, cmd == "start", *jsonOutput, out)
 	case "", "status", "demo":
+		if cmd == "status" {
+			shown, err := printFocusSummary(*state, *project, *jsonOutput, out)
+			if err != nil || shown {
+				return err
+			}
+		}
 		if cmd != "status" && terminal(in) {
 			return menu(s, *project, *state, in, out, errOut)
 		}
@@ -190,6 +197,9 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 		if e = hooks.Disconnect(*project); e != nil {
 			return e
 		}
+		if e = focusProvider(*state, *project).Pause(true); e != nil {
+			return e
+		}
 		if *jsonOutput {
 			return json.NewEncoder(out).Encode(startResult{Project: *project, Status: "disconnected", Message: "Recording is disconnected. Your saved reports remain available."})
 		}
@@ -205,6 +215,9 @@ func Run(args []string, in io.Reader, out, errOut io.Writer) error {
 		}
 		return doctor(s, *project, *state, out)
 	case "pause", "resume":
+		if e = focusProvider(*state, *project).Pause(cmd == "pause"); e != nil {
+			return e
+		}
 		if e = s.SetPaused(*project, cmd == "pause"); e != nil {
 			return e
 		}
@@ -627,7 +640,7 @@ func serveReady(s *store.Store, project, dir string, port int, readyFile string,
 	fmt.Fprintf(out, "\nUsing a VM? On YOUR computer, run (replace USER@VM with your SSH host):\n  ssh -N -L 127.0.0.1:%d:127.0.0.1:%d USER@VM\nThen open the browser address above on YOUR computer.\n", actual, actual)
 	fmt.Fprintln(out, "The address grants access to this local report. Keep this terminal open while viewing.")
 	fmt.Fprintln(out, "Ctrl+C closes the report server. Codex hook recording continues independently.")
-	srv := &http.Server{Handler: web.NewHandler(s, project, token), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
+	srv := &http.Server{Handler: web.NewHandler(s, project, token, focusProvider(dir, project)), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {
@@ -669,7 +682,14 @@ Start here:
   sparestep serve           Open a local browser report (SSH instructions included)
   sparestep serve --demo    Explore the browser with example data
 
-Review:
+Focus (normally managed by /sparestep <task> in Codex):
+  sparestep focus status [--json]
+  sparestep focus begin | amend | defer | check | review | finish
+  sparestep linear connect  Sign in once to file saved side work
+  sparestep linear status   See pending delivery
+  sparestep linear flush    Retry pending delivery
+
+Activity reports:
   sparestep status [--json]
   sparestep review FINDING_ID
   sparestep feedback FINDING_ID necessary|dismissed|open
@@ -681,6 +701,7 @@ Control:
   sparestep prune --days 30
 
 Options go before finding IDs: --project FOLDER, --state-dir FOLDER.
-Data stays on the computer where recording runs. No AI calls are made.
+Records stay local. Connected Linear receives deferred issue details.
+Sparestep makes no AI calls.
 Actual token totals are unavailable from the initial hook connection.`)
 }

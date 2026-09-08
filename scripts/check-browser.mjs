@@ -1,11 +1,18 @@
 // Optional developer check. The product itself does not need Node or Playwright.
 import { spawn } from 'node:child_process';
-import { mkdir, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const binary = process.env.SPARESTEP_BINARY || './dist/sparestep-linux-amd64';
 const server = spawn(binary, ['serve', '--demo', '--port', '0'], { stdio: ['ignore', 'pipe', 'pipe'] });
 let browser;
+
+async function openActivity(page) {
+  const details = page.locator('details.details-panel');
+  if (!(await details.evaluate((node) => node.open))) await details.locator(':scope > summary').click();
+  await page.locator('#findings .finding').first().waitFor({ state: 'visible' });
+}
+
 try {
   const address = await new Promise((resolve, reject) => {
     let output = '';
@@ -23,17 +30,19 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(address);
   await page.locator('#demo-banner').waitFor({ state: 'visible' });
+  await openActivity(page);
   await page.getByRole('button', { name: 'Review issue draft' }).first().waitFor();
   assert.equal(new URL(page.url()).hash, '', 'access fragment should be cleared');
-  await mkdir('docs/images', { recursive: true });
-  await page.screenshot({ path: 'docs/images/sparestep-example.png', fullPage: true });
+  if (process.env.SPARESTEP_SCREENSHOT) {
+    await page.screenshot({ path: process.env.SPARESTEP_SCREENSHOT, fullPage: true });
+  }
   await page.getByRole('button', { name: 'This was necessary', exact: true }).first().click();
   await page.locator('#history .finding').waitFor();
   assert.equal(await page.locator('#findings .finding').count(), 0);
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await page.locator('#findings .finding').waitFor();
   await page.reload();
-  await page.locator('#findings .finding').waitFor();
+  await openActivity(page);
   await page.getByRole('button', { name: 'Dismiss', exact: true }).first().click();
   await page.locator('#history .finding').waitFor();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
@@ -60,11 +69,12 @@ try {
   await page.waitForFunction(() => document.getElementById('issue-status').textContent.includes('Linked'));
   await page.getByRole('button', { name: 'Close issue draft' }).click();
   await page.reload();
+  await openActivity(page);
   await page.getByRole('link', { name: 'Open linked Linear issue' }).waitFor();
-  await page.getByRole('button', { name: 'Pause capture', exact: true }).click();
-  await page.getByRole('button', { name: 'Resume capture', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Resume capture', exact: true }).click();
-  await page.getByRole('button', { name: 'Pause capture', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Pause Sparestep', exact: true }).click();
+  await page.getByRole('button', { name: 'Resume Sparestep', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Resume Sparestep', exact: true }).click();
+  await page.getByRole('button', { name: 'Pause Sparestep', exact: true }).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile layout must not overflow');
   assert.deepEqual(errors, [], 'browser runtime errors');

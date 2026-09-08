@@ -26,6 +26,9 @@ var expectedEvents = map[string]struct{}{
 	"postToolUse":      {},
 	"stop":             {},
 	"postCompact":      {},
+	"subagentStart":    {},
+	"subagentStop":     {},
+	"interrupt":        {},
 }
 
 // Result describes the setup state without exposing app-server diagnostics,
@@ -65,7 +68,7 @@ type rpcResponse struct {
 	Error  json.RawMessage `json:"error"`
 }
 
-// Setup trusts only the six existing generated Sparestep project handlers by
+// Setup trusts only the existing generated Sparestep project handlers by
 // their current hashes. Hook installation remains the caller's responsibility.
 // It does not edit Codex's private trust store or use a trust bypass.
 func Setup(project, binary, stateDir string) (Result, error) {
@@ -357,7 +360,7 @@ func emptyMatcher(raw json.RawMessage) bool {
 }
 
 func notLoadedResult() Result {
-	return Result{Status: "not_loaded", Message: "Codex did not load all six exact Sparestep project handlers.", NextAction: "Open a new Codex task in this project, then use /sparestep again."}
+	return Result{Status: "not_loaded", Message: "Codex did not load all required Sparestep project handlers.", NextAction: "Open a new Codex task in this project, then use /sparestep again."}
 }
 
 func disabledResult() Result {
@@ -365,7 +368,7 @@ func disabledResult() Result {
 }
 
 func needsReviewResult() Result {
-	return Result{Status: "needs_review", Message: "The connection is installed; Codex could not finish its hook review automatically.", NextAction: "Open /hooks and trust the six Sparestep entries, then use /sparestep again."}
+	return Result{Status: "needs_review", Message: "The connection is installed; Codex could not finish its hook review automatically.", NextAction: "Open /hooks and trust the Sparestep entries, then use /sparestep again."}
 }
 
 func unsupportedResult(ctx context.Context) Result {

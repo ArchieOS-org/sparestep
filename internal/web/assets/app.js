@@ -223,7 +223,7 @@
     $('host').textContent = hostname;
     $('task-context').textContent = value.task_id ? ` · Task ${value.task_id}` : '';
     $('status').textContent = statusText(value);
-    $('pause').textContent = value.paused ? 'Resume capture' : 'Pause capture';
+    $('pause').textContent = value.paused ? 'Resume Sparestep' : 'Pause Sparestep';
     $('pause').disabled = false;
 
     $('demo-banner').hidden = !isDemo;
@@ -254,8 +254,185 @@
       $('usage-note').textContent = value.usage_note || 'Token totals are unavailable for this connection.';
     }
 
+    renderFocus(value.focus);
+    renderDeferred(value.deferred);
     renderFindings(findings, events);
     renderEvidence(events);
+  }
+
+  function humanStatus(value) {
+    const status = String(value || '').trim();
+    if (!status) return 'Unknown';
+    return status
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  function statusClass(value) {
+    const known = ['queued', 'sending', 'created', 'ambiguous', 'auth_required', 'needs_attention', 'done', 'ready', 'implementing', 'planning', 'active', 'paused', 'completed', 'stopped', 'cancelled', 'superseded'];
+    const status = String(value || '').toLowerCase();
+    return known.includes(status) ? `status-${status.replace(/_/g, '-')}` : 'status-neutral';
+  }
+
+  function focusStatusLabel(focus) {
+    const status = String(focus.status || 'active').toLowerCase();
+    if (status === 'completed') return 'Done';
+    if (status === 'active' && focus.hook_observed !== true) return 'Waiting for native guards';
+    if (status === 'active' && focus.hook_observed === true) return 'Native guards observed';
+    return humanStatus(status);
+  }
+
+  function appendTextList(parent, label, values, className = 'focus-list') {
+    const list = Array.isArray(values) ? values.filter((item) => item !== null && item !== undefined && String(item).trim()) : [];
+    if (!list.length) return;
+    parent.appendChild(makeElement('h3', 'focus-subheading', label));
+    const ul = makeElement('ul', className);
+    list.forEach((item) => {
+      const text = typeof item === 'string' ? item : item.name || item.description || item.reason || item.title || item.status || '';
+      if (String(text).trim()) ul.appendChild(makeElement('li', '', text));
+    });
+    if (ul.childElementCount) parent.appendChild(ul);
+  }
+
+  function renderFocus(focus) {
+    const content = $('focus-content');
+    const status = $('focus-status');
+    clearElement(content);
+    status.textContent = '';
+    status.className = 'focus-status';
+
+    if (!focus || typeof focus !== 'object') {
+      $('scope-section').hidden = true;
+      clearElement($('scope-content'));
+      const empty = makeElement('article', 'focus-empty');
+      empty.appendChild(makeElement('h3', '', 'No focused task'));
+      const prompt = makeElement('p');
+      prompt.appendChild(document.createTextNode('Start one in Codex with '));
+      prompt.appendChild(makeElement('code', '', '/sparestep <what you want done>'));
+      prompt.appendChild(document.createTextNode('.'));
+      empty.appendChild(prompt);
+      empty.appendChild(makeElement('p', 'muted', 'Capture records activity; it does not protect a goal.'));
+      content.appendChild(empty);
+      return;
+    }
+
+    const focusStatus = String(focus.status || 'active');
+    status.textContent = focusStatusLabel(focus);
+    const waitingForGuards = focusStatus.toLowerCase() === 'active' && focus.hook_observed !== true;
+    status.classList.add(waitingForGuards ? 'status-waiting' : statusClass(focusStatus));
+
+    const card = makeElement('article', 'focus-card');
+    card.appendChild(makeElement('h3', 'focus-goal', focus.goal || 'Focused task'));
+    const meta = makeElement('p', 'meta');
+    const bits = [];
+    if (focus.id) bits.push(`Task ${focus.id}`);
+    if (focus.mode) bits.push(humanStatus(focus.mode));
+    if (bits.length) meta.textContent = bits.join(' · ');
+    if (meta.textContent) card.appendChild(meta);
+
+    const criteria = Array.isArray(focus.criteria) ? focus.criteria : [];
+    if (criteria.length) {
+      const heading = makeElement('h3', 'focus-subheading', 'Success criteria');
+      card.appendChild(heading);
+      const list = makeElement('ul', 'criteria-list');
+      criteria.forEach((criterion) => {
+        if (!criterion || typeof criterion !== 'object') return;
+        const item = makeElement('li', 'criterion');
+        const row = makeElement('div', 'criterion-row');
+        row.appendChild(makeElement('span', 'criterion-description', criterion.description || criterion.id || 'Criterion'));
+        if (criterion.status) row.appendChild(makeElement('span', `criterion-status ${statusClass(criterion.status)}`, humanStatus(criterion.status)));
+        item.appendChild(row);
+        const evidence = Array.isArray(criterion.evidence) ? criterion.evidence : (criterion.evidence ? [criterion.evidence] : []);
+        appendTextList(item, 'Evidence', evidence, 'criterion-evidence');
+        list.appendChild(item);
+      });
+      card.appendChild(list);
+    }
+    appendTextList(card, 'Paths in scope', focus.paths);
+    appendTextList(card, 'Checks', focus.checks);
+    appendTextList(card, 'Coverage gaps', focus.coverage_gaps, 'coverage-gaps');
+    content.appendChild(card);
+
+    const amendments = Array.isArray(focus.amendments)
+      ? focus.amendments.filter((amendment) => amendment && typeof amendment === 'object')
+      : [];
+    const scope = $('scope-section');
+    scope.hidden = amendments.length === 0;
+    if (amendments.length) renderScopeChanges(amendments);
+    else clearElement($('scope-content'));
+  }
+
+  function renderScopeChanges(amendments) {
+    const content = $('scope-content');
+    clearElement(content);
+    amendments.forEach((amendment) => {
+      if (!amendment || typeof amendment !== 'object') return;
+      const item = makeElement('article', 'scope-item');
+      if (amendment.reason) item.appendChild(makeElement('p', 'scope-reason', amendment.reason));
+      if (amendment.criterion_id) item.appendChild(makeElement('p', 'meta', `Related criterion: ${amendment.criterion_id}`));
+      appendTextList(item, 'Affected paths', amendment.paths, 'scope-paths');
+      const evidence = Array.isArray(amendment.evidence) ? amendment.evidence : (amendment.evidence ? [amendment.evidence] : []);
+      appendTextList(item, 'Evidence', evidence, 'scope-evidence');
+      if (amendment.created_at) {
+        const time = new Date(amendment.created_at);
+        item.appendChild(makeElement('p', 'meta', `Added ${Number.isNaN(time.getTime()) ? amendment.created_at : time.toLocaleString()}`));
+      }
+      content.appendChild(item);
+    });
+  }
+
+  function deferredStatusCopy(value, hasURL) {
+    switch (String(value || '').toLowerCase()) {
+      case 'queued': return 'Queued — not filed yet';
+      case 'sending': return 'Being filed…';
+      case 'created': return hasURL ? 'Filed in Linear' : 'Created — link pending';
+      case 'ambiguous': return 'Needs attention — filing outcome is uncertain';
+      case 'auth_required': return 'Linear connection required before filing';
+      case 'needs_attention': return 'Needs attention before filing';
+      default: return humanStatus(value || 'queued');
+    }
+  }
+
+  function safeLinearURL(value) {
+    if (!value) return '';
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol !== 'https:' || parsed.hostname !== 'linear.app' || parsed.username || parsed.password) return '';
+      return parsed.href;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function renderDeferred(items) {
+    const section = $('deferred-section');
+    const container = $('deferred');
+    const deferred = Array.isArray(items) ? items.filter((item) => item && typeof item === 'object') : [];
+    section.hidden = deferred.length === 0;
+    $('deferred-count').textContent = deferred.length ? `${number(deferred.length)} item${deferred.length === 1 ? '' : 's'}` : '';
+    clearElement(container);
+    deferred.forEach((item) => {
+      const article = makeElement('article', 'deferred-card');
+      const heading = makeElement('div', 'deferred-heading');
+      heading.appendChild(makeElement('h3', '', item.title || 'Deferred work'));
+      heading.appendChild(makeElement('span', `deferred-status ${statusClass(item.status)}`, deferredStatusCopy(item.status, safeLinearURL(item.issue_url))));
+      article.appendChild(heading);
+      if (item.task_id) article.appendChild(makeElement('p', 'meta', `Task ${item.task_id}`));
+      if (item.body) article.appendChild(makeElement('p', 'deferred-body', item.body));
+      const issueURL = safeLinearURL(item.issue_url);
+      if (issueURL) {
+        const link = makeElement('a', 'issue-link', 'Open confirmed Linear issue');
+        link.href = issueURL;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        article.appendChild(link);
+      } else if (item.status === 'auth_required') {
+        article.appendChild(makeElement('p', 'deferred-note', 'Connect Linear from Sparestep when you are ready. This item is still queued locally.'));
+      } else if (item.status === 'queued' || item.status === 'sending') {
+        article.appendChild(makeElement('p', 'deferred-note', 'This item is saved locally; it has not been confirmed as a Linear issue.'));
+      }
+      container.appendChild(article);
+    });
   }
 
   function renderFindings(findings, events) {
@@ -284,7 +461,7 @@
     const heading = makeElement('div', 'finding-heading');
     const title = makeElement('h3', '', finding.title || 'Untitled finding');
     heading.appendChild(title);
-    if (finding.issue_url) heading.appendChild(makeElement('span', 'linked-badge', 'Linked'));
+    if (safeLinearURL(finding.issue_url)) heading.appendChild(makeElement('span', 'linked-badge', 'Linked'));
     if (historical) heading.appendChild(makeElement('span', `disposition disposition-${finding.disposition}`, finding.disposition === 'necessary' ? 'Marked necessary' : 'Dismissed'));
     article.appendChild(heading);
 
@@ -320,9 +497,10 @@
     }
     article.appendChild(evidence);
 
-    if (finding.issue_url) {
+    const issueURL = safeLinearURL(finding.issue_url);
+    if (issueURL) {
       const link = makeElement('a', 'issue-link', 'Open linked Linear issue');
-      link.href = finding.issue_url;
+      link.href = issueURL;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       article.appendChild(link);

@@ -17,7 +17,7 @@ import (
 	"github.com/ArchieOS-org/sparestep/internal/model"
 )
 
-var requiredEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "PostCompact"}
+var requiredEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "PostCompact", "SubagentStart", "SubagentStop", "Interrupt"}
 
 // Process converts one Codex hook payload into append-only observations.
 func Process(data []byte, configuredProject string, history []model.Event) ([]model.Event, error) {
@@ -79,6 +79,7 @@ func Process(data []byte, configuredProject string, history []model.Event) ([]mo
 		Source:       "codex-hook",
 		Project:      eventProject,
 		SessionID:    session,
+		AgentID:      firstString(raw, "agent_id"),
 		TurnID:       turn,
 		Timestamp:    now,
 		ContextKnown: false,
@@ -117,6 +118,12 @@ func Process(data []byte, configuredProject string, history []model.Event) ([]mo
 	case "postcompact", "post_compact":
 		base.Kind = "context_reset"
 		base.Summary = "context compacted"
+	case "subagentstart":
+		base.Kind = "agent_started"
+	case "subagentstop":
+		base.Kind = "agent_stopped"
+	case "interrupt":
+		base.Kind = "task_interrupted"
 	default:
 		base.Kind = "gap"
 		base.Gap = "unknown Codex hook event"

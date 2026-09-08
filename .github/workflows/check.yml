@@ -18,6 +18,7 @@ jobs:
       - run: sh scripts/build-release.sh
       - run: dist/sparestep-linux-amd64 demo
       - run: python3 scripts/check-capture.py --binary dist/sparestep-linux-amd64
+      - run: python3 scripts/check-focus.py --binary dist/sparestep-linux-amd64
       - run: python3 scripts/check-onboarding.py --binary dist/sparestep-linux-amd64
       - uses: actions/upload-artifact@v4
         with:

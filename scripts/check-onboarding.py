@@ -57,7 +57,7 @@ with tempfile.TemporaryDirectory(prefix='sparestep-onboarding-') as temp:
             assert 'new Codex task' in first.get('next_action', ''), first
             trusted = tomllib.loads((config / 'config.toml').read_text())['hooks']['state']
             assert trusted['sentinel']['trusted_hash'] == 'sha256:sentinel', trusted
-            assert len(trusted) == 7, 'setup trusted an unrelated handler or omitted its own'
+            assert len(trusted) == 10, 'setup trusted an unrelated handler or omitted its own'
         else:
             assert first['status'] == 'codex_missing', first
         hookfile = project / '.codex' / 'hooks.json'
@@ -96,7 +96,7 @@ with tempfile.TemporaryDirectory(prefix='sparestep-onboarding-') as temp:
         print('PASS: nested-directory setup, idempotent connection, concurrent report reuse, '
               'persistent pause, separate worktrees, background lifetime, and scoped disconnect.')
         if native:
-            print('PASS: native Codex setup trusts exactly six generated hooks and preserves other trust settings.')
+            print('PASS: native Codex setup trusts exactly nine generated hooks and preserves other trust settings.')
         else:
             print('Native trust integration was skipped: Codex CLI is not installed.')
     finally:

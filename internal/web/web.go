@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ArchieOS-org/sparestep/internal/model"
 	"github.com/ArchieOS-org/sparestep/internal/store"
 )
 
@@ -23,11 +24,23 @@ type handler struct {
 	project, token string
 	mu             sync.Mutex
 	sessions       map[string]string
+	focus          FocusProvider
+}
+
+// FocusProvider keeps the browser independent of the controller and publisher.
+// Snapshot must return only this handler's worktree data.
+type FocusProvider struct {
+	Snapshot func() (any, any, error)
+	Pause    func(bool) error
+	Version  string
 }
 
 // NewHandler returns the authenticated local report application.
-func NewHandler(s *store.Store, project, token string) http.Handler {
+func NewHandler(s *store.Store, project, token string, providers ...FocusProvider) http.Handler {
 	h := &handler{s: s, project: project, token: token, sessions: make(map[string]string)}
+	if len(providers) > 0 {
+		h.focus = providers[0]
+	}
 	m := http.NewServeMux()
 	m.HandleFunc("/", h.page)
 	m.HandleFunc("/assets/", h.asset)
@@ -115,7 +128,7 @@ func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"project": h.project})
+	_ = json.NewEncoder(w).Encode(map[string]string{"project": h.project, "version": h.focus.Version})
 }
 func (h *handler) auth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -182,7 +195,19 @@ func (h *handler) report(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, e.Error(), 500)
 		return
 	}
-	jsonWrite(w, x)
+	var task, deferred any
+	if h.focus.Snapshot != nil {
+		task, deferred, e = h.focus.Snapshot()
+		if e != nil {
+			http.Error(w, "Focus status is temporarily unavailable", 500)
+			return
+		}
+	}
+	jsonWrite(w, struct {
+		model.Report
+		Focus    any `json:"focus"`
+		Deferred any `json:"deferred"`
+	}{x, task, deferred})
 }
 func (h *handler) disposition(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -268,6 +293,12 @@ func (h *handler) pause(w http.ResponseWriter, r *http.Request) {
 	if json.NewDecoder(r.Body).Decode(&x) != nil {
 		http.Error(w, "bad request", 400)
 		return
+	}
+	if h.focus.Pause != nil {
+		if e := h.focus.Pause(x.Paused); e != nil {
+			http.Error(w, "Could not update focus", 500)
+			return
+		}
 	}
 	if e := h.s.SetPaused(h.project, x.Paused); e != nil {
 		http.Error(w, e.Error(), 500)
