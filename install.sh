@@ -1,47 +1,40 @@
 #!/bin/sh
+# Install a verified release binary without root or a compiler.
 set -eu
 
-if [ -f "${ONE_SHOT_INSTALL_HOME:-$HOME}/.config/one-shot-tally/disabled" ]; then
-    printf '%s\n' "one-shot-tally is temporarily disabled; installation skipped."
-    exit 0
+version=${SPARESTEP_VERSION:-v0.1.0}
+install_dir=${SPARESTEP_INSTALL_DIR:-"$HOME/.local/bin"}
+case "$(uname -s)" in
+  Linux) os=linux ;;
+  *) echo 'This preview installer supports Linux. See the repository for other builds.' >&2; exit 1 ;;
+esac
+case "$(uname -m)" in
+  x86_64|amd64) arch=amd64 ;;
+  aarch64|arm64) arch=arm64 ;;
+  *) echo 'Supported Linux architectures: x86_64 and arm64.' >&2; exit 1 ;;
+esac
+
+asset="sparestep-$os-$arch"
+base="https://github.com/ArchieOS-org/sparestep/releases/download/$version"
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+if [ -n "${SPARESTEP_RELEASE_DIR:-}" ]; then
+  cp "$SPARESTEP_RELEASE_DIR/$asset" "$tmp/$asset"
+  cp "$SPARESTEP_RELEASE_DIR/SHA256SUMS" "$tmp/SHA256SUMS"
+else
+  command -v curl >/dev/null 2>&1 || { echo 'Install curl, then run this installer again.' >&2; exit 1; }
+  curl -fL --retry 2 "$base/$asset" -o "$tmp/$asset"
+  curl -fL --retry 2 "$base/SHA256SUMS" -o "$tmp/SHA256SUMS"
 fi
-
-command -v sqlite3 >/dev/null 2>&1 || {
-    echo "one-shot-tally: sqlite3 is required for goal history" >&2
-    exit 1
-}
-sqlite3 -json :memory: 'select 1;' >/dev/null
-
-install_mode=full
-if [ "$#" -gt 0 ]; then
-    if [ "$#" -eq 1 ] && [ "$1" = "--tally-only" ]; then
-        install_mode=tally-only
-    else
-        echo "usage: ./install.sh [--tally-only]" >&2
-        exit 2
-    fi
-fi
-
-install_home=${ONE_SHOT_INSTALL_HOME:-"$HOME"}
-bin_dir="$install_home/.local/bin"
-skill_dir="$install_home/.codex/skills/one-shot-tally"
-
-mkdir -p "$bin_dir" "$skill_dir"
-go build -o "$bin_dir/one-shot-tally" .
-install -m 0644 SKILL.md "$skill_dir/SKILL.md"
-cmp -s SKILL.md "$skill_dir/SKILL.md"
-version_output=$("$bin_dir/one-shot-tally" version)
-printf '%s\n' "$version_output"
-printf '%s\n' "$version_output" | grep -Fq 'one-shot-tally 1.22.0 | ColinKnapp.com'
-
-if [ "$install_mode" = tally-only ]; then
-    printf '%s\n' "one-shot-tally: tally-only install verified"
-    exit 0
-fi
-
-mkdir -p "$install_home/.local/libexec"
-xcrun swiftc -parse-as-library -O native-trash/TrashCommand.swift -o "$install_home/.local/libexec/agent-native-trash"
-go build -o "$bin_dir/agent-file-guard" ./cmd/agent-file-guard
-"$bin_dir/agent-file-guard" install
-python3 scripts/install-file-guard.py
-printf '%s\n' "one-shot-tally: production install verified"
+command -v sha256sum >/dev/null 2>&1 || { echo 'sha256sum is required to verify the download.' >&2; exit 1; }
+expected=$(awk -v name="$asset" '$2==name {print $1}' "$tmp/SHA256SUMS")
+[ -n "$expected" ] || { echo 'No checksum found for this binary.' >&2; exit 1; }
+actual=$(sha256sum "$tmp/$asset" | awk '{print $1}')
+[ "$actual" = "$expected" ] || { echo 'Download checksum did not match. Nothing installed.' >&2; exit 1; }
+mkdir -p "$install_dir"
+install -m 0755 "$tmp/$asset" "$install_dir/sparestep.new"
+mv "$install_dir/sparestep.new" "$install_dir/sparestep"
+"$install_dir/sparestep" version
+printf '\nInstalled: %s/sparestep\n' "$install_dir"
+printf 'In your project, run: %s/sparestep\n' "$install_dir"
+printf 'Then choose Connect Codex. Installation alone does not enable recording.\n'

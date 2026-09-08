@@ -1,0 +1,1 @@
+dialog{border:1px solid #d7d4cc;border-radius:14px;padding:22px;max-width:620px;width:calc(100% - 32px);color:#1c2927}dialog::backdrop{background:#17251f66}dialog label{display:block;font-weight:600;margin:10px 0}dialog input,dialog textarea{display:block;width:100%;font:inherit;padding:8px;border:1px solid #b7c5bd;border-radius:6px;margin-top:4px}

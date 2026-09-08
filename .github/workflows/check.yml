@@ -1,0 +1,24 @@
+name: Check Sparestep
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache: true
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: sh scripts/build-release.sh
+      - run: dist/sparestep-linux-amd64 demo
+      - run: python3 scripts/check-capture.py --binary dist/sparestep-linux-amd64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sparestep-linux
+          path: dist/

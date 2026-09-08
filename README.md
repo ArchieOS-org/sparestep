@@ -1,181 +1,86 @@
-# one-shot-tally
+# Sparestep
 
-`one-shot-tally` records a Codex work cycle. It tracks tool use, checks, delivery, background jobs, work items, and subagent calls.
+**Help Codex do less busywork.**
 
-Use the report to find repeated calls, passive waits, redundant checks, unfinished work, and missing verification. The hook does not change commands or approve actions.
+Sparestep records your Codex activity and explains recurring problems worth fixing. Read a short report, tell it when work was necessary, and turn a useful finding into an editable Linear issue draft.
 
-Copyright © 2026 [ColinKnapp.com](https://colinknapp.com). All rights reserved. See [LICENSE](LICENSE).
+It runs locally on Linux, including a VM accessed only through SSH. Recording makes no AI calls.
 
-## Outcomes
+![An example Sparestep report showing a recurring setup failure](docs/images/sparestep-example.png)
 
-- `NO OBSERVED WORK`: no tool activity was recorded.
-- `ACTIVITY OBSERVED`: activity occurred without verified current edits.
-- `FAILED`: an unresolved delivery, edit, or other non-test action failed, or the requested outcome was abandoned.
-- `VERIFIED`: native delivery succeeded for the current revision, or the current edit completed and a later standalone local check passed without changing the Git-visible worktree.
-- `RECOVERED`: a delivery first failed, then the same operation later returned a matching structured success. The report marks this as `INCREDIBLE WIN` and gives the outcome grade 100. The efficiency score remains diagnostic.
+## Try it
 
-The activity score is diagnostic. It does not change the recorded outcome. The score uses a workload allowance instead of one fixed tool-call limit.
-
-Test failures are advisory. They remain in the check counts and report, but do
-not automatically mark the requested outcome failed or override successful
-delivery. Compare a failed expectation with the requested behavior: it may
-reflect an intentional change, an unintended defect, a faulty test, or an
-environment problem. Repair the relevant cause and continue. A failed test
-does not become a pass, and passing tests alone do not prove deployment.
-
-The base allowance is 30 weighted calls and three checks. Each accepted work item adds five calls and one check. Each completed item adds two calls. A distinct subagent task adds one call for coordination. The report uses at most 12 work items, seven added checks, and four subagent tasks. Repeated and failed additions reduce the score but do not expand the allowance.
-
-## Hook behavior
-
-- `SessionStart` and `UserPromptSubmit` return `{}`.
-- `PreToolUse` records calls and returns `{}`. It does not rewrite or approve a command.
-- `PostToolUse` records explicit structured results and normally returns `{}`. Recognized native browser startup errors add recovery guidance. Plain output text is not proof of success.
-- Native `DeliveryResult` events record the actual `ship-it` or `deploy-it` result.
-- Structured command metadata and native delivery receipts supply result evidence. Prose, quoted examples, printed markers, and JSON printed in command stdout cannot prove success. Native receipts use a cooperating local executable protocol, not an authenticated remote service.
-- Some Codex command hooks supply stdout without an exit status. Those results remain unknown. Native delivery reports its result directly after the repository command returns. A successful receipt must match a clean current checkout before it clears incomplete delivery.
-- Unresolved results persist by session and project across turns. The first terminal blocker claim that is observed at `Stop` gets one bounded `decision:block` response that asks for fact checking and recovery within the current authorization. Tool actions are never blocked.
-- A repeated unresolved `Stop` does not continue the blocker response, but the changed outcome remains visible. An unresolved delivery is `FAILED` with outcome grade 0.
-- Audit statements and quoted examples do not create blocker claims. The hook does not promise universal natural-language understanding.
-
-Standard mode and goal mode use the same workload allowance.
-
-When a native Chrome or Chromium launch fails during startup, tally can advise the agent to change the browser runtime before retrying. It does not stop tools, suppress crash dialogs, or change permissions. Page errors and unrelated command failures do not trigger this guidance. See [browser startup failures](SKILL.md#browser-startup-failures) for the verified local alternative and its limits.
-
-## Language rules
-
-Use Microsoft Writing Style and ASD-STE100-inspired Simplified Technical English for documentation and command output.
-
-- Lead with the result.
-- Use short, direct sentences.
-- Use one instruction per sentence or list item.
-- Put a condition before its action.
-- Use the same term for the same item.
-- Keep exact command names, identifiers, and security terms.
-- Keep hook output factual.
-- Avoid legal and policy wording unless an exact field or command requires it.
-
-## Commands
-
-```text
-one-shot-tally                  process a hook event from stdin
-one-shot-tally status [--json]
-one-shot-tally grade [--json]
-one-shot-tally background record ID --cleanup CMD [--tmux-target PANE]
-one-shot-tally background complete ID [--wake]
-one-shot-tally background list
-one-shot-tally todo add TEXT --context WHY
-one-shot-tally todo list [--all]
-one-shot-tally todo done ID
-one-shot-tally goal list [--all]
-one-shot-tally goal show ID
-one-shot-tally goal resume ID
-one-shot-tally credential key-check
-one-shot-tally credential send --operation-id UUID --account REF
-one-shot-tally version
-one-shot-tally help|-h|--help
-```
-
-## Background work
-
-Ordinary shell removals use [Move to Trash with undo receipts](native-trash/README.md)
-through the file guard. Each successful move prints the exact restore command.
-
-The [fleet SSH guard](FLEET-SSH.md) is disabled. The full installer does not
-activate it.
-
-For the separate native macOS worker that removes Trash items older than seven days, see [automatic Trash maintenance](maintenance/README.md). It runs through launchd without AI input and requires one host-side activation.
-
-Record a job before detaching it:
+Download the Linux installer from [the release](https://github.com/ArchieOS-org/sparestep/releases/tag/v0.1.0), then run:
 
 ```sh
-one-shot-tally background record docs-build --cleanup 'tmux kill-session -t docs-build'
+sh install.sh
+~/.local/bin/sparestep demo
 ```
 
-Let the detached job report completion:
+The installer verifies the binary's checksum. It needs `curl` and `sha256sum`; it does not need root, a compiler, or a database server.
+
+Prefer a browser? Run:
 
 ```sh
-one-shot-tally background complete docs-build --wake
+~/.local/bin/sparestep serve --demo
 ```
 
-`record` captures `$TMUX_PANE` when available. `complete` is idempotent. Use `--wake` only from the detached job. Cleanup commands stay in state. The hook does not type cleanup commands into a terminal.
+Open the address it prints. Example data is labeled and kept separate from your recordings.
 
-## Work items
+## Connect your project
 
-For multi-step work, add one item for each distinct result. Do not add a work item for a trivial one-step request.
+In the project where Codex runs:
 
 ```sh
-one-shot-tally todo add 'Review cache invalidation path' \
-  --context 'Required before the cache release'
+~/.local/bin/sparestep connect
 ```
 
-Use `todo list` to review entries. Use `todo done ID` when the result is complete. The report shows accepted items, add attempts, repeated adds, completed items, and open items.
+Open Codex in that project. Review the project's hooks using `/hooks` and trust the Sparestep entries. This is Codex's own required review before hooks run. If the project is untrusted or hooks are disabled, Codex will not record its activity. [Codex hook setup](https://learn.chatgpt.com/docs/hooks)
 
-Delegate an item only when it is independent and parallel work improves the result. Use a distinct `task_name` for each subagent task. The report shows total, distinct, Spark, and repeated subagent calls.
-
-## Resume a goal
+After a task, run:
 
 ```sh
-one-shot-tally goal list
-one-shot-tally goal show ID
-one-shot-tally goal resume ID
+~/.local/bin/sparestep doctor
+~/.local/bin/sparestep
 ```
 
-Add `--all` to include completed goals. `goal resume` prints the stored objective and the next two commands. The command does not change goal state.
+The terminal guide lets you inspect findings, mark work necessary, dismiss or restore suggestions, and save issue drafts. `doctor` distinguishes an installed connection from recorded activity.
 
-## Encrypted credential delivery
+## Using a Linux VM?
 
-Check the recipient key without reading or sending a credential:
+Run Sparestep on the VM where Codex runs. Everything works in the SSH terminal.
+
+To use your own computer's browser, run `sparestep serve` on the VM. Follow its SSH forwarding instruction **on your computer**, then open the printed browser address there. The VM needs no browser, desktop, GPU, or public web port. Records stay on the VM.
+
+Closing the report does not stop hook recording. Recording follows Codex; Sparestep does not keep Codex itself alive after an SSH disconnect or reboot.
+
+## What the preview can tell you
+
+- A known setup or tool failure happened across multiple tasks.
+- Which supported checks returned a known pass, failure, or unknown result.
+- The recorded duration of attempts, when available.
+
+Native shell results supplied only as text remain **unknown**. Recurring findings need structured failure evidence, such as an MCP tool's error response. This preview will therefore miss many ordinary shell failures.
+
+Repeated-check and repeated-read detectors require reliable unchanged-context evidence. Ordinary Codex hooks do not provide all of that context, so those detectors abstain on incomplete observations. A repeated command alone is not proof of waste.
+
+**Actual token totals are unavailable from this initial hook connection.** Hosted tools and some remote activity are also outside its coverage. It does not claim proven savings, correct code, or successful deployment from a passing command.
+
+## Your feedback becomes useful work
+
+Choose **Review issue draft**, edit the title and description, then download Markdown or open the draft in Linear. Nothing is submitted automatically. You can link an existing Linear issue instead. Opening Linear is never reported as a created issue.
+
+## Stay in control
 
 ```sh
-one-shot-tally credential key-check
+sparestep pause              # Stays paused across restarts
+sparestep resume
+sparestep disconnect         # Remove only the Sparestep project hooks
+sparestep prune --days 30    # Remove older observations
 ```
 
-The command performs an isolated GnuPG `clear,wkd` lookup for `colin.knapp@boompay.ca`. It requires a valid self-certified UID and an encryption-capable key. It reports fingerprints for diagnostics but does not pin the recipient fingerprint in production.
+State lives under `~/.local/state/sparestep`, or `$XDG_STATE_HOME/sparestep`. Use `--state-dir` or `SPARESTEP_STATE_DIR` for a different location. Project options go before finding IDs; `sparestep help` shows examples.
 
-Successful lookups are cached privately for one hour. Failed lookups are cached for five minutes. There is no embedded-key, local-keyring, DNS-record, keyserver, plaintext, or `gmail-cli` fallback.
+Automatic learning is reserved for a later version, with review, a budget, and undo.
 
-To send, use a new operation ID and a non-secret account reference:
-
-```sh
-one-shot-tally credential send \
-  --operation-id 123e4567-e89b-12d3-a456-426614174000 \
-  --account boompay-admin
-```
-
-Pass the credential through stdin. Do not put it in an argument or environment variable.
-
-The transport:
-
-- signs with subkey `33EA65A9C078126556C150E1EA43219BE7B419F1`;
-- encrypts to the validated WKD recipient key;
-- sends only PGP/MIME ciphertext through a restricted SSH key;
-- fixes the sender as `colin@nixc.us` and recipient as `colin.knapp@boompay.ca`;
-- records metadata and ciphertext hashes, never credential text or a plaintext hash.
-
-An operation ID is idempotent. Exit status 3 means the result is unknown. Resolve that receipt or mailbox state before creating another operation.
-
-## Install
-
-```sh
-git clone https://github.com/Leopere/one-shot-tally.git
-cd one-shot-tally
-go test ./...
-./install.sh
-```
-
-The installer builds `~/.local/bin/one-shot-tally`, copies `SKILL.md` to `~/.codex/skills/one-shot-tally/SKILL.md`, and verifies the installed version. Re-run it after each upgrade.
-
-Use `./install.sh --tally-only` to build and copy only `one-shot-tally` and its skill, then verify version `1.22.0`. This mode does not reinstall the file guard or its profile. The default `./install.sh` behavior remains the full install.
-
-Installation does not enable hooks. Configure Codex to run the absolute installed path for the hook events you want. The supplied setup supports `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, and `Stop`.
-
-State defaults to `$HOME/.codex/state/one-shot-delivery`. Set `ONE_SHOT_STATE_DIR` for isolated testing. Goal history uses `$CODEX_HOME/goals_1.sqlite` for named accounts and otherwise `$HOME/.codex/goals_1.sqlite`.
-
-## Development
-
-```sh
-go test ./...
-go build ./...
-```
-
-Keep tests focused on workload accounting, hook silence, result evidence, revision ordering, concurrency, and credential transport boundaries.
+For development and exact limitations, see [the developer guide](docs/DEVELOPMENT.md), [preview validation](docs/VALIDATION.md), and [the product plan](docs/PLAN.md). This fork retains the upstream [license](LICENSE); it has not been relicensed.

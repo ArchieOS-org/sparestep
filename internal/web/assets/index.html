@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sparestep report</title>
+    <link rel="stylesheet" href="/assets/style.css">
+  </head>
+  <body>
+    <main>
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">SPARESTEP</p>
+          <h1 id="project">Your report</h1>
+          <p class="context-line">Project: <span id="project-path">—</span></p>
+          <p class="context-line">Host: <span id="host">This computer</span><span id="task-context"></span></p>
+          <p id="status" class="status-line">Connecting to the local report…</p>
+        </div>
+        <div class="actions" aria-label="Report actions">
+          <button id="pause" type="button" disabled>Pause capture</button>
+          <button id="refresh" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <div id="demo-banner" class="demo-banner" hidden role="status">
+        <strong>Example data</strong> — this is a demonstration and is not a measurement of your work.
+      </div>
+      <div id="notice" class="notice" role="status" aria-live="polite"></div>
+
+      <section class="summary" aria-label="Report summary">
+        <div class="summary-item">
+          <span id="checks">—</span>
+          <small>checks recorded</small>
+          <p id="check-coverage" class="summary-note"></p>
+        </div>
+        <div class="summary-item">
+          <span id="elapsed">—</span>
+          <small>elapsed task time</small>
+        </div>
+        <div class="summary-item">
+          <span id="usage">—</span>
+          <small>token usage</small>
+          <p id="usage-note" class="summary-note"></p>
+        </div>
+      </section>
+
+      <section aria-labelledby="open-heading">
+        <div class="section-head">
+          <h2 id="open-heading">Open findings</h2>
+          <span id="finding-count" class="section-count"></span>
+        </div>
+        <p class="section-intro">These are the clearest repeated patterns in the activity that was recorded.</p>
+        <div id="findings"></div>
+      </section>
+
+      <section id="history-section" aria-labelledby="history-heading" hidden>
+        <div class="section-head">
+          <h2 id="history-heading">Feedback history</h2>
+        </div>
+        <p class="section-intro">Necessary and dismissed findings stay here. Undo brings one back to your open list.</p>
+        <div id="history"></div>
+      </section>
+
+      <details class="evidence-panel">
+        <summary>Recorded evidence <span id="evidence-count"></span></summary>
+        <div id="evidence" class="evidence"></div>
+      </details>
+
+      <footer>Local report · data stays on this computer</footer>
+    </main>
+
+    <dialog id="draft-dialog" aria-labelledby="draft-heading">
+      <form id="draft-form" method="dialog">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">ISSUE DRAFT</p>
+            <h2 id="draft-heading">Review a finding</h2>
+          </div>
+          <button id="draft-close" class="icon-button" type="button" aria-label="Close issue draft">×</button>
+        </div>
+        <p id="draft-finding-label" class="dialog-context"></p>
+        <p id="draft-error" class="dialog-error" role="alert" aria-live="assertive"></p>
+        <div class="field">
+          <label for="draft-title">Issue title</label>
+          <input id="draft-title" name="title" type="text" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="draft-body">Issue description</label>
+          <textarea id="draft-body" name="body" rows="12"></textarea>
+        </div>
+        <div class="dialog-actions">
+          <button id="draft-download" type="button">Download Markdown</button>
+          <button id="draft-open-linear" type="button" class="primary">Open in Linear</button>
+        </div>
+        <div class="issue-link-box">
+          <label for="issue-url">Existing Linear issue link</label>
+          <div class="issue-link-row">
+            <input id="issue-url" type="url" inputmode="url" placeholder="https://linear.app/team/issue/…" autocomplete="url">
+            <button id="issue-save" type="button">Save link</button>
+          </div>
+          <p id="issue-status" class="issue-status" aria-live="polite"></p>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="/assets/app.js"></script>
+  </body>
+</html>
