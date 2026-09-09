@@ -21,11 +21,13 @@ import (
 )
 
 type ConnectOptions struct {
-	Endpoint   string
-	DisplayURL func(string)
-	OnURL      func(string) error
-	HTTPClient *http.Client
-	NoBrowser  bool
+	Endpoint     string
+	CallbackURL  string
+	CallbackPort int
+	DisplayURL   func(string)
+	OnURL        func(string) error
+	HTTPClient   *http.Client
+	NoBrowser    bool
 }
 
 // Connect establishes an MCP session using Linear's Streamable HTTP endpoint.
@@ -68,15 +70,24 @@ func (o *Outbox) Connect(ctx context.Context, stateDir string, callbacks ...any)
 		o.markAllAuthRequired("browser authorization is required; run `sparestep linear connect` interactively")
 		return ErrAuthRequired
 	}
+	if err := validateCallbackOptions(opts); err != nil {
+		return err
+	}
 	preferredCallback := ""
 	if stored != nil {
 		preferredCallback = stored.Config.RedirectURL
+	}
+	if opts.CallbackPort != 0 {
+		preferredCallback = fmt.Sprintf("http://127.0.0.1:%d/callback", opts.CallbackPort)
 	}
 	callbackURL, waitCallback, stopCallback, err := localCallback(ctx, preferredCallback)
 	if err != nil {
 		return err
 	}
 	defer stopCallback()
+	if opts.CallbackURL != "" {
+		callbackURL = opts.CallbackURL
+	}
 	fetcher := func(fetchCtx context.Context, args *auth.AuthorizationArgs) (*auth.AuthorizationResult, error) {
 		if opts.NoBrowser {
 			return nil, ErrAuthRequired
@@ -115,7 +126,7 @@ func (o *Outbox) Connect(ctx context.Context, stateDir string, callbacks ...any)
 			return savingTokenSource(cfg.TokenSource(c, tok), cfg, tok, save), nil
 		},
 	}
-	if stored != nil && stored.Config.ClientID != "" {
+	if stored != nil && stored.Config.ClientID != "" && stored.Config.RedirectURL == callbackURL {
 		config.PreregisteredClient = &oauthex.ClientCredentials{ClientID: stored.Config.ClientID}
 		if stored.Config.ClientSecret != "" {
 			config.PreregisteredClient.ClientSecretAuth = &oauthex.ClientSecretAuth{ClientSecret: stored.Config.ClientSecret}
@@ -250,10 +261,14 @@ func localCallback(ctx context.Context, preferred string) (string, <-chan *auth.
 			http.Error(w, "missing code", http.StatusBadRequest)
 			return
 		}
-		fmt.Fprintln(w, "Sparestep is authorized. You may return to the terminal.")
-		result <- &auth.AuthorizationResult{Code: q.Get("code"), State: q.Get("state"), Iss: q.Get("iss")}
+		select {
+		case result <- &auth.AuthorizationResult{Code: q.Get("code"), State: q.Get("state"), Iss: q.Get("iss")}:
+			fmt.Fprintln(w, "Sign-in received. You can return to Sparestep.")
+		default:
+			http.Error(w, "sign-in already received", http.StatusConflict)
+		}
 	})
-	server := &http.Server{Handler: mux}
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second}
 	go func() { _ = server.Serve(listener) }()
 	stop := func() { _ = server.Shutdown(context.Background()) }
 	_ = ctx
@@ -269,4 +284,21 @@ func netListen(preferred string) (net.Listener, error) {
 		}
 	}
 	return net.Listen("tcp", "127.0.0.1:0")
+}
+
+func validateCallbackOptions(opts ConnectOptions) error {
+	if opts.CallbackPort < 0 || opts.CallbackPort > 65535 {
+		return errors.New("linear: callback port must be between 0 and 65535")
+	}
+	if opts.CallbackURL == "" {
+		return nil
+	}
+	u, err := url.Parse(opts.CallbackURL)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("linear: public callback must be an HTTPS URL without credentials, query, or fragment")
+	}
+	if opts.CallbackPort == 0 {
+		return errors.New("linear: a public callback requires a loopback callback port")
+	}
+	return nil
 }

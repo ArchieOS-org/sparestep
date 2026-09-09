@@ -212,6 +212,8 @@ func runLinear(args []string, state string, in io.Reader, out, errOut io.Writer)
 	fs.SetOutput(errOut)
 	dir := fs.String("state-dir", state, "Private state folder")
 	project := fs.String("project", "", "Project/worktree for destination setup")
+	callbackURL := fs.String("callback-url", "", "Public HTTPS callback URL for a remote browser")
+	callbackPort := fs.Int("callback-port", 0, "Loopback port forwarded by the public callback")
 	_ = fs.Bool("json", false, "Print JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -272,10 +274,10 @@ func runLinear(args []string, state string, in io.Reader, out, errOut io.Writer)
 	case "connect":
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		err = o.Connect(ctx, *dir, linear.ConnectOptions{DisplayURL: func(address string) {
+		err = o.Connect(ctx, *dir, linear.ConnectOptions{CallbackURL: *callbackURL, CallbackPort: *callbackPort, DisplayURL: func(address string) {
 			fmt.Fprintln(out, "Connect Linear:", address)
 			if u, e := url.Parse(address); e == nil {
-				if callback, e := url.Parse(u.Query().Get("redirect_uri")); e == nil && callback.Port() != "" {
+				if callback, e := url.Parse(u.Query().Get("redirect_uri")); e == nil && callback.Hostname() == "127.0.0.1" && callback.Port() != "" {
 					fmt.Fprintf(out, "Using an SSH VM? On your computer, forward the sign-in callback before opening that link:\nssh -N -L 127.0.0.1:%s:127.0.0.1:%s USER@VM\n", callback.Port(), callback.Port())
 				}
 			}

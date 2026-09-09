@@ -79,3 +79,15 @@ Disconnect each configured project before removing the executable. Disconnect pr
 ## Remaining product stages
 
 The Linear OAuth and MCP publisher are implemented, but sign-in against a real Linear account and a real issue creation have not been validated in this environment. Do not describe the integration as connected or an item as filed without a confirmed issue URL. Live token telemetry, fully evidenced repeated-read/check detection, contextual suggestions, and learning remain separate milestones. The schemas retain provenance and feedback to support them. One real CLI model task verified native scope denial before an edit. Broader desktop/client coverage, human usability studies, and controlled savings experiments remain pending; replay and discovery checks are separate evidence. Do not advertise planned thresholds as measured results.
+
+## Remote browser sign-in
+
+A tunnel or reverse proxy can forward one public HTTPS callback to a loopback listener:
+
+```sh
+sparestep linear connect --project /path/to/worktree \
+  --callback-url https://your-tunnel.example/linear/callback \
+  --callback-port 43123
+```
+
+Forward that exact public path to `http://127.0.0.1:43123/callback`, preserving the query string. Keep the sign-in process and tunnel running through approval. Public callback URLs reject embedded credentials, queries and fragments. OAuth still uses PKCE and state verification; saved tokens remain in the private VM state directory. Remove the temporary callback route after sign-in. Normal local sign-in still uses an ephemeral loopback callback.

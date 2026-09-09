@@ -60,7 +60,7 @@ func (o *Outbox) validateDispatchPolicy(ctx context.Context, taskID string) erro
 	if userResult.IsError {
 		return fmt.Errorf("linear: get_user failed: %s", resultText(userResult))
 	}
-	assignee, ok := findEntity(policyEntities(userResult), d.assignee())
+	assignee, ok := findEntity(policyUserEntities(userResult), d.assignee())
 	if !ok {
 		return errors.New("linear: selected assignee was not returned by live policy")
 	}
@@ -174,7 +174,13 @@ func (o *Outbox) validateDispatchPolicy(ctx context.Context, taskID string) erro
 
 type policyEntity map[string]any
 
-func policyEntities(r ToolResult) []policyEntity {
+func policyEntities(r ToolResult) []policyEntity { return decodePolicyEntities(r, false) }
+
+// User details include nested team identities. Those are relationships, not
+// additional users returned by get_user(query:"me").
+func policyUserEntities(r ToolResult) []policyEntity { return decodePolicyEntities(r, true) }
+
+func decodePolicyEntities(r ToolResult, rootsOnly bool) []policyEntity {
 	var values []any
 	if r.StructuredContent != nil {
 		values = append(values, r.StructuredContent)
@@ -186,11 +192,20 @@ func policyEntities(r ToolResult) []policyEntity {
 		}
 	}
 	var out []policyEntity
+	seen := map[string]bool{}
 	var walk func(any)
 	walk = func(v any) {
 		switch x := v.(type) {
 		case map[string]any:
 			if hasEntityIdentity(x) {
+				if rootsOnly {
+					encoded, _ := json.Marshal(x)
+					if !seen[string(encoded)] {
+						out = append(out, policyEntity(x))
+						seen[string(encoded)] = true
+					}
+					return
+				}
 				out = append(out, policyEntity(x))
 			}
 			for _, child := range x {

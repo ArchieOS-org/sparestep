@@ -105,7 +105,7 @@ func (f *liveShapeMCP) CallTool(ctx context.Context, name string, args map[strin
 	case "get_user":
 		// This deliberately has no isMe convenience field: the policy must
 		// accept a single user returned for query="me" by its UUID/name.
-		return liveTextResult(map[string]any{"id": liveUserID, "name": "Noah", "active": true}), nil
+		return liveTextResult(map[string]any{"id": liveUserID, "name": "Noah", "active": true, "teams": []any{map[string]any{"id": liveDispatchTeamID, "name": "Dispatch"}, map[string]any{"id": liveGenericTeamID, "name": "Other"}}}), nil
 	case "list_issue_statuses":
 		return liveTextResult(map[string]any{"statuses": []any{map[string]any{
 			"id": liveBacklogID, "name": "Backlog", "type": "backlog",
@@ -331,5 +331,22 @@ func TestLiveShapesReconcileUsesMarkerMatchingIssueURL(t *testing.T) {
 	fake.mu.Unlock()
 	if creates != 1 || lists != 1 || query != items[0].ID {
 		t.Fatalf("unexpected reconciliation calls: creates=%d lists=%d query=%q", creates, lists, query)
+	}
+}
+
+func TestUserDetailsPreserveAmbiguity(t *testing.T) {
+	user := map[string]any{"id": "user-one", "name": "User", "teams": []any{map[string]any{"id": "team-one", "name": "Team"}}}
+	data, _ := json.Marshal(user)
+	result := ToolResult{StructuredContent: user, Content: []Content{{Type: "text", Text: string(data)}}}
+	entities := policyUserEntities(result)
+	if len(entities) != 1 {
+		t.Fatalf("counted relationships or duplicate encodings as users: %d", len(entities))
+	}
+	if _, ok := findEntity(entities, "me"); !ok {
+		t.Fatal("rejected current user")
+	}
+	result = ToolResult{StructuredContent: map[string]any{"users": []any{user, map[string]any{"id": "user-two", "name": "Another"}}}}
+	if _, ok := findEntity(policyUserEntities(result), "me"); ok {
+		t.Fatal("accepted ambiguous users")
 	}
 }

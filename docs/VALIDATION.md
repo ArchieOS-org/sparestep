@@ -2,6 +2,12 @@
 
 This file separates the current v0.3 implementation checks from historical preview records. Passing a check does not prove measured savings, complete native coverage, a live Linear connection, or a published release.
 
+## v0.3.2 Linear sign-in on a remote VM
+
+Validated September 9, 2026. Browser OAuth completed through a Cloudflare HTTPS callback into a loopback listener. A fresh MCP connection reused the saved authorization without another browser login. Live reads validated the Dispatch team, `Dispatch v1 — Duncan feedback` project, current assignee, Backlog workflow, labels and milestone requirements. No issue was created as part of verification.
+
+The live check exposed nested team memberships being counted as users in `get_user(query:"me")`. User decoding now selects root user records, retains ambiguity checks, and handles duplicate structured/text encodings. Regression tests cover this response shape, public callback validation and duplicate callback handling. `SPARESTEP_LIVE_STATE=/path/to/state go test ./internal/linear -run TestLiveSavedConnection -v` repeats the opt-in read-only connection check using a temporary empty outbox.
+
 ## v0.3.1 worktree repair
 
 Validated September 9, 2026. Codex loads linked-worktree hooks from the root checkout; setup now verifies and trusts that actual source, and shared hook commands route events to explicitly connected worktrees. Focus scope remains local to each worktree. A ready first activation saves the brief immediately.
@@ -31,7 +37,7 @@ The focus check and browser fixtures use temporary projects, synthetic native ho
 
 ## Current limitations and pending evidence
 
-- The Linear MCP/OAuth publisher and durable outbox are implemented. Browser OAuth discovery and authorization-link creation were exercised, but sign-in was not completed and no real issue was created by Sparestep. Live Dispatch metadata was read through the existing Codex connector; the standalone publisher was tested with schema-validating MCP fixtures. Do not call a queued item filed without a confirmed issue URL.
+- Browser sign-in and saved-authorization reconnect are verified against live Linear, along with the configured Dispatch destination. No actual issue-create/reconcile sequence has been performed. Do not call a queued item filed without a confirmed issue URL.
 - The outbox retry, lease, deduplication, and ambiguous-result paths have local tests and black-box queue coverage; external network failure and a real Linear create/reconcile sequence remain pending.
 - Native scope denial was exercised in one real CLI task. Desktop Plan-mode transitions, additional tools, hosted or remote actions, and arbitrary Bash effects still need field validation. Missing rollout metadata leaves a visible coverage gap and relies on the explicit skill instructions.
 - `focus check` records the actual command exit result. Review criteria record an agent assessment and are not machine proof. Completion is accepted only after an explicit finish attempt with all required criteria satisfied; an ordinary stop or foreground question does not complete a task.
