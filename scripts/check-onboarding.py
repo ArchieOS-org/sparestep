@@ -36,6 +36,14 @@ with tempfile.TemporaryDirectory(prefix='sparestep-onboarding-') as temp:
     (project / '.codex').mkdir()
     (project / '.codex' / 'hooks.json').write_text(json.dumps({'hooks': {
         'Stop': [{'hooks': [{'type': 'command', 'command': 'neighbor', 'timeout': 1}]}]}}))
+    # A linked worktree may contain a stale local declaration. Codex resolves
+    # project hooks from the canonical checkout, so this decoy must never be
+    # selected or replaced by the Sparestep setup.
+    worktree_codex = worktree / '.codex'
+    worktree_codex.mkdir()
+    worktree_hook = worktree_codex / 'hooks.json'
+    worktree_hook.write_text(json.dumps({'hooks': {
+        'Stop': [{'hooks': [{'type': 'command', 'command': 'worktree-decoy', 'timeout': 1}]}]}}))
 
     def run(action, folder=nested):
         result = subprocess.run([binary, action, '--project', str(folder), '--state-dir', str(state),
@@ -82,7 +90,11 @@ with tempfile.TemporaryDirectory(prefix='sparestep-onboarding-') as temp:
         second = run('start', worktree)
         assert second['project'] == str(worktree) and second['url'] != first['url'], second
         assert len(endpoints()) == 2, endpoints()
-        assert not (worktree / '.codex' / 'hooks.json').samefile(hookfile)
+        assert b'worktree-decoy' in worktree_hook.read_bytes(), 'linked worktree hook declaration was not preserved'
+        assert run('doctor', worktree)['status'] != 'not_connected', 'linked worktree was not locally connected'
+        if native:
+            assert second['status'] == 'ready', second
+            assert tomllib.loads((config / 'config.toml').read_text())['hooks']['state'] == trusted
         # The background process outlives the invoking command and serves the right project.
         for report in [first, second]:
             parsed = urlsplit(report['url'])
@@ -90,9 +102,11 @@ with tempfile.TemporaryDirectory(prefix='sparestep-onboarding-') as temp:
             req = Request(f'http://{parsed.netloc}/api/health', headers={'Authorization': f'Bearer {token}'})
             with urlopen(req, timeout=2) as response:
                 assert json.load(response)['project'] == report['project']
+        assert run('disconnect', worktree)['status'] == 'disconnected'
+        assert hookfile.read_bytes() == original, 'disconnecting a linked worktree removed shared hooks'
+        assert run('doctor')['status'] != 'not_connected', 'linked disconnect removed the canonical hook connection'
         assert run('disconnect')['status'] == 'disconnected'
         assert run('doctor')['status'] == 'not_connected'
-        assert run('doctor', worktree)['status'] != 'not_connected'
         print('PASS: nested-directory setup, idempotent connection, concurrent report reuse, '
               'persistent pause, separate worktrees, background lifetime, and scoped disconnect.')
         if native:

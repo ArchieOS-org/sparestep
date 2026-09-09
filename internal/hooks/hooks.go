@@ -491,6 +491,17 @@ func digest(s string) string {
 func configPath(project string) string { return filepath.Join(project, ".codex", "hooks.json") }
 
 func Connect(project, binary, stateDir string) (string, error) {
+	return connect(project, binary, stateDir, false)
+}
+
+// ConnectShared must not redirect other worktrees to a different state store.
+func ConnectShared(project, binary, stateDir string) (string, error) {
+	return connect(project, binary, stateDir, true)
+}
+
+var ErrSharedConflict = errors.New("shared hooks use a different Sparestep executable or state folder")
+
+func connect(project, binary, stateDir string, preserve bool) (string, error) {
 	p := configPath(project)
 	old, err := os.ReadFile(p)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -520,6 +531,17 @@ func Connect(project, binary, stateDir string) (string, error) {
 		if ok {
 			if err := validateEventHooks(v); err != nil {
 				return "", fmt.Errorf("hooks.%s: %w", ev, err)
+			}
+			if preserve {
+				for _, group := range v.([]any) {
+					for _, raw := range group.(map[string]any)["hooks"].([]any) {
+						handler, _ := raw.(map[string]any)
+						existing, _ := handler["command"].(string)
+						if ownedCommand(existing, project) && existing != cmd {
+							return "", ErrSharedConflict
+						}
+					}
+				}
 			}
 			if containsOwned(v, cmd) {
 				continue

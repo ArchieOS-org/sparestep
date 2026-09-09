@@ -80,7 +80,7 @@ def choose_binary(binary_arg: str | None, root: Path) -> Path:
     return binary
 
 
-def main(binary_arg: str | None, model: str, timeout: int) -> None:
+def main(binary_arg: str | None, model: str, timeout: int, linked_worktree: bool = False) -> None:
     source_home = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser()
     source_auth = source_home / "auth.json"
     if not source_auth.is_file():
@@ -99,6 +99,10 @@ def main(binary_arg: str | None, model: str, timeout: int) -> None:
         subprocess.run(["git", "-C", str(project), "config", "user.email", "native@example.invalid"], check=True)
         subprocess.run(["git", "-C", str(project), "add", "."], check=True)
         subprocess.run(["git", "-C", str(project), "commit", "-qm", "native fixture"], check=True)
+        canonical = project
+        if linked_worktree:
+            project = root / "linked worktree with spaces"
+            subprocess.run(["git", "-C", str(canonical), "worktree", "add", "-qb", "probe", str(project)], check=True)
         codex_home.mkdir(mode=0o700)
         auth_copy = codex_home / "auth.json"
         shutil.copy2(source_auth, auth_copy)
@@ -107,7 +111,7 @@ def main(binary_arg: str | None, model: str, timeout: int) -> None:
         # hook trust; start obtains the exact hook hashes through app-server.
         (codex_home / "config.toml").write_text(
             "[features]\nhooks = true\n\n"
-            f'[projects."{project}"]\ntrust_level = "trusted"\n'
+            + "".join(f'[projects."{p}"]\ntrust_level = "trusted"\n' for p in dict.fromkeys([canonical, project]))
         )
         binary = choose_binary(binary_arg, root)
         env = os.environ.copy()
@@ -187,6 +191,8 @@ def main(binary_arg: str | None, model: str, timeout: int) -> None:
             if begin.returncode != 0:
                 fail(f"focus begin failed: {begin.stderr[:1000]}")
 
+            if not json.loads(begin.stdout).get("focus"):
+                fail(f"focus begin did not save the brief: {begin.stdout[:1000]}")
             lines = [first]
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline and codex.stdout:
@@ -230,6 +236,7 @@ def main(binary_arg: str | None, model: str, timeout: int) -> None:
                 "hook_observed": focus.get("hook_observed"),
                 "outside_file_created": outside.exists(),
                 "setup_status": setup_json.get("status"),
+                "linked_worktree": linked_worktree,
             }, sort_keys=True))
         finally:
             if codex is not None and codex.poll() is None:
@@ -246,9 +253,10 @@ if __name__ == "__main__":
     parser.add_argument("--binary", help="use an existing Sparestep binary")
     parser.add_argument("--model", default="gpt-5.3-codex-spark", help="Codex model for the one native turn")
     parser.add_argument("--timeout", type=int, default=60, help="bounded turn timeout in seconds")
+    parser.add_argument("--linked-worktree", action="store_true", help="exercise shared canonical hooks in a linked worktree")
     args = parser.parse_args()
     try:
-        main(args.binary, args.model, args.timeout)
+        main(args.binary, args.model, args.timeout, args.linked_worktree)
     except (RuntimeError, OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         raise SystemExit(1)

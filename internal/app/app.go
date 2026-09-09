@@ -28,7 +28,7 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-var Version = "0.3.0"
+var Version = "0.3.1"
 
 func defaultState() (string, error) {
 	if p := os.Getenv("SPARESTEP_STATE_DIR"); p != "" {

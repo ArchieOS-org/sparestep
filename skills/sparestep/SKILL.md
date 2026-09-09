@@ -21,7 +21,7 @@ SPARESTEP_INPUT
 
 Use conditions appropriate to the actual task, with stable IDs. `review` records a judgment with evidence; `check` requires an executed command. Initial paths are component boundaries, not permission to modify everything beneath them. Preserve required repository workflows and tests.
 
-If the result says `setup_only`, relay its `next_action` and do not claim protection is active. First-time setup may require one new Codex task. Never bypass native trust. Otherwise retain `focus.id` for subsequent calls (`--id ID`); native session identity supplies isolation.
+If the result says `setup_only`, relay its `next_action` and do not claim protection is active. Preserve the agreed plan and report the setup limitation once; do not add restarting or replanning as a completion condition. Never bypass native trust. When the brief is saved, retain `focus.id` for subsequent calls (`--id ID`) and continue in this task. Only suggest a new task if its hooks actually remain unavailable; native session identity supplies isolation.
 
 Work toward the brief using ordinary Codex judgment; no supervisor agents, extra per-tool reports, or repeated planning. At a meaningful boundary:
 

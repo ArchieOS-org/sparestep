@@ -90,7 +90,7 @@ func runFocus(args []string, state string, in io.Reader, out, errOut io.Writer) 
 				return errors.New("each completion condition needs a description")
 			}
 		}
-		if connected, _ := hooks.ConnectionStatus(*project); !connected {
+		{
 			binary, e := os.Executable()
 			if e != nil {
 				return e
@@ -102,7 +102,9 @@ func runFocus(args []string, state string, in io.Reader, out, errOut io.Writer) 
 			if e != nil {
 				return e
 			}
-			return json.NewEncoder(out).Encode(map[string]any{"focus": nil, "status": setup.Status, "message": setup.Message, "next_action": setup.NextAction, "setup_only": true})
+			if setup.Status != "ready" {
+				return json.NewEncoder(out).Encode(map[string]any{"focus": nil, "status": setup.Status, "message": setup.Message, "next_action": setup.NextAction, "setup_only": true})
+			}
 		}
 	}
 	if action == "status" {
@@ -275,6 +277,27 @@ func runHook(in io.Reader, out io.Writer, dir, project string) error {
 		diagnostic(dir, errors.New("hook input unavailable or too large"))
 		return json.NewEncoder(out).Encode(decision)
 	}
+	var envelope struct {
+		Cwd                   string `json:"cwd"`
+		WorkingDirectory      string `json:"working_directory"`
+		WorkingDirectoryCamel string `json:"workingDirectory"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		diagnostic(dir, err)
+		return json.NewEncoder(out).Encode(decision)
+	}
+	cwd := envelope.Cwd
+	if cwd == "" {
+		cwd = envelope.WorkingDirectory
+	}
+	if cwd == "" {
+		cwd = envelope.WorkingDirectoryCamel
+	}
+	effectiveProject, ok := hooks.ResolveHookProject(project, cwd)
+	if !ok {
+		return json.NewEncoder(out).Encode(decision)
+	}
+	project = effectiveProject
 	if _, err := os.Stat(filepath.Join(dir, "focus.db")); err == nil {
 		s, e := focus.Open(filepath.Join(dir, "focus.db"))
 		if e == nil {

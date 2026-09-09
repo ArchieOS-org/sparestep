@@ -2,6 +2,15 @@
 
 This file separates the current v0.3 implementation checks from historical preview records. Passing a check does not prove measured savings, complete native coverage, a live Linear connection, or a published release.
 
+## v0.3.1 worktree repair
+
+Validated September 9, 2026. Codex loads linked-worktree hooks from the root checkout; setup now verifies and trusts that actual source, and shared hook commands route events to explicitly connected worktrees. Focus scope remains local to each worktree. A ready first activation saves the brief immediately.
+
+- Go race tests and vet passed, including registered/unregistered routing, nested unrelated repositories, malformed Git metadata, and disconnect isolation.
+- Focus and native onboarding regressions passed. The linked worktree reaches ready while preserving neighboring hook definitions and shared trust; disconnecting it retains the root hooks.
+- `python3 scripts/check-native-focus.py --binary dist/sparestep-linux-amd64 --linked-worktree` passed using one isolated Spark turn: setup ready, native hook observed, outside file absent.
+- Installed v0.3.1 on the Linux host. Setup for the affected Dispatch worktree now reports ready without a restart instruction. This is setup verification, not a claim that the existing task has already activated a focus brief.
+
 ## v0.3.0 checks
 
 Validated September 8, 2026 on the Linux development host with Go 1.27.1 and Codex CLI 0.153.4.

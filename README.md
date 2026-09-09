@@ -45,7 +45,7 @@ The GUI shows the task, completion conditions, scope changes, and deferred issue
 
 ## Two one-time setup steps
 
-The first invocation installs the project hooks. Codex may need one new task to load them; Sparestep tells you the next step. “Waiting for native guards” means protection has not yet been observed.
+The first invocation sets up hooks and saves your task brief. Continue in the same task. “Waiting for native guards” means protection has not yet been observed; a new task is only needed if Codex has not loaded the hooks. Linked worktrees share hook setup while keeping their task scopes separate.
 
 To enable automatic issue filing:
 

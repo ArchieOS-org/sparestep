@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-version=${1:-0.3.0}
+version=${1:-0.3.1}
 mkdir -p dist
 for arch in amd64 arm64; do
   CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags="-s -w -X github.com/ArchieOS-org/sparestep/internal/app.Version=$version" -o "dist/sparestep-linux-$arch" .

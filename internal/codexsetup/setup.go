@@ -15,6 +15,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/ArchieOS-org/sparestep/internal/hooks"
 )
 
 const setupTimeout = 10 * time.Second
@@ -69,7 +71,8 @@ type rpcResponse struct {
 }
 
 // Setup trusts only the existing generated Sparestep project handlers by
-// their current hashes. Hook installation remains the caller's responsibility.
+// their current hashes. Callers register local hooks; for linked worktrees,
+// Setup also installs the shared root-checkout definitions Codex discovers.
 // It does not edit Codex's private trust store or use a trust bypass.
 func Setup(project, binary, stateDir string) (Result, error) {
 	project, binary, stateDir, err := absoluteInputs(project, binary, stateDir)
@@ -108,6 +111,15 @@ func absoluteInputs(project, binary, stateDir string) (string, string, string, e
 }
 
 func setupWith(parent context.Context, codex, project, binary, stateDir string) (Result, error) {
+	sourceProject := hooks.SharedHookProject(project)
+	if sourceProject != project {
+		if _, err := hooks.ConnectShared(sourceProject, binary, stateDir); err != nil {
+			if errors.Is(err, hooks.ErrSharedConflict) {
+				return Result{Status: "shared_config_conflict", Message: "This checkout already shares hooks using a different Sparestep executable or state folder.", NextAction: "Use the same Sparestep installation and state folder as the main checkout, then use /sparestep again."}, nil
+			}
+			return Result{}, err
+		}
+	}
 	ctx, cancel := context.WithTimeout(parent, setupTimeout)
 	defer cancel()
 	server, err := startServer(ctx, codex, project)
@@ -123,10 +135,10 @@ func setupWith(parent context.Context, codex, project, binary, stateDir string) 
 	if err != nil {
 		return unsupportedResult(ctx), nil
 	}
-	expectedCommand := hookCommand(binary, project, stateDir)
-	selected, err := selectHooks(first, project, expectedCommand)
+	expectedCommand := hookCommand(binary, sourceProject, stateDir)
+	selected, err := selectHooks(first, sourceProject, expectedCommand)
 	if err != nil {
-		if hasDisabledExactHook(first, project, expectedCommand) {
+		if hasDisabledExactHook(first, sourceProject, expectedCommand) {
 			return disabledResult(), nil
 		}
 		return notLoadedResult(), nil
@@ -154,15 +166,15 @@ func setupWith(parent context.Context, codex, project, binary, stateDir string) 
 	if err != nil {
 		return unsupportedResult(ctx), nil
 	}
-	if _, err := selectTrustedHooks(final, project, expectedCommand); err != nil {
-		if hasDisabledExactHook(final, project, expectedCommand) {
+	if _, err := selectTrustedHooks(final, sourceProject, expectedCommand); err != nil {
+		if hasDisabledExactHook(final, sourceProject, expectedCommand) {
 			return disabledResult(), nil
 		}
 		return needsReviewResult(), nil
 	}
 	result := Result{Status: "ready", Message: "Sparestep is connected to this project.", Changed: changed}
 	if changed {
-		result.NextAction = "Open a new Codex task in this project once to load the connection."
+		result.NextAction = "Continue in this task. If its hooks remain unavailable, open a new Codex task in this project."
 	}
 	return result, nil
 }
@@ -360,7 +372,7 @@ func emptyMatcher(raw json.RawMessage) bool {
 }
 
 func notLoadedResult() Result {
-	return Result{Status: "not_loaded", Message: "Codex did not load all required Sparestep project handlers.", NextAction: "Open a new Codex task in this project, then use /sparestep again."}
+	return Result{Status: "not_loaded", Message: "Codex did not load all required Sparestep project handlers.", NextAction: "Open /hooks and check whether Sparestep is listed for this project. Check project hook configuration before retrying /sparestep."}
 }
 
 func disabledResult() Result {

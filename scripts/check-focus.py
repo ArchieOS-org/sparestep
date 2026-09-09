@@ -19,10 +19,63 @@ import tempfile
 
 
 REPO = Path(__file__).resolve().parents[1]
+HOOK_EVENTS = (
+    "sessionStart", "userPromptSubmit", "preToolUse", "postToolUse", "stop",
+    "postCompact", "subagentStart", "subagentStop", "interrupt",
+)
 
 
 def fail(message: str) -> None:
     raise AssertionError(message)
+
+
+def write_setup_fixture(root: Path, project: Path, binary: Path, state: Path) -> Path:
+    """Create a tiny public app-server protocol fixture for Codex-less CI."""
+    fixture_dir = root / "codex-fixture"
+    fixture_dir.mkdir()
+    fixture = fixture_dir / "codex"
+    fixture.write_text("""#!/usr/bin/env python3
+import json
+import os
+import sys
+
+project = os.environ["SPARESTEP_FIXTURE_PROJECT"]
+binary = os.environ["SPARESTEP_FIXTURE_BINARY"]
+state = os.environ["SPARESTEP_FIXTURE_STATE"]
+events = ("sessionStart", "userPromptSubmit", "preToolUse", "postToolUse", "stop",
+          "postCompact", "subagentStart", "subagentStop", "interrupt")
+
+def quote(value):
+    return "'" + value.replace("'", "'\\\\''") + "'"
+
+command = quote(binary) + " hook --project " + quote(project) + " --state-dir " + quote(state) + " # Sparestep recording"
+trusted = False
+for line in sys.stdin:
+    request = json.loads(line)
+    method = request.get("method")
+    ident = request.get("id")
+    if ident is None:
+        continue
+    if method == "hooks/list":
+        hooks = []
+        for event in events:
+            hooks.append({"key": project + "/.codex/hooks.json:" + event,
+                          "eventName": event, "handlerType": "command", "command": command,
+                          "async": False, "matcher": None, "timeoutSec": 2,
+                          "sourcePath": project + "/.codex/hooks.json", "source": "project",
+                          "enabled": True, "isManaged": False,
+                          "currentHash": "sha256:fixture-" + event,
+                          "trustStatus": "trusted" if trusted else "untrusted"})
+        result = {"data": [{"cwd": project, "hooks": hooks, "errors": [], "warnings": []}]}
+        print(json.dumps({"id": ident, "result": result}), flush=True)
+    elif method == "config/batchWrite":
+        trusted = True
+        print(json.dumps({"id": ident, "result": {"status": "ok"}}), flush=True)
+    else:
+        print(json.dumps({"id": ident, "result": {}}), flush=True)
+""")
+    fixture.chmod(0o755)
+    return fixture_dir
 
 
 def main(binary_arg: str | None) -> None:
@@ -40,6 +93,14 @@ def main(binary_arg: str | None) -> None:
         subprocess.run(["git", "-C", str(project), "commit", "-qm", "fixture"], check=True)
         state = root / "state with spaces"
         codex_home = root / "codex home"
+        codex_home.mkdir()
+        # Keep native setup deterministic when Codex is installed, without
+        # copying credentials or contacting a provider. Hook discovery only
+        # needs the isolated feature and project trust settings.
+        (codex_home / "config.toml").write_text(
+            "[features]\nhooks = true\n\n"
+            f'[projects."{project}"]\ntrust_level = "trusted"\n'
+        )
         if binary_arg:
             binary = Path(binary_arg).resolve()
             if not binary.is_file():
@@ -61,6 +122,19 @@ def main(binary_arg: str | None) -> None:
             "CODEX_SESSION_ID": "session-amend",
             "CODEX_THREAD_ID": "thread-root",
         })
+        # Use the real Codex app-server whenever it is installed. In a
+        # Codex-less environment, this explicit fixture implements only the
+        # initialize/hooks-list/config-batchWrite setup protocol; the focus
+        # checks below still exercise the real Sparestep CLI and hook JSON.
+        native_codex = shutil.which("codex", path=base_env.get("PATH")) is not None
+        if not native_codex:
+            fixture_dir = write_setup_fixture(root, project, binary, state)
+            base_env["PATH"] = str(fixture_dir) + os.pathsep + base_env.get("PATH", "")
+            base_env.update({
+                "SPARESTEP_FIXTURE_PROJECT": str(project),
+                "SPARESTEP_FIXTURE_BINARY": str(binary),
+                "SPARESTEP_FIXTURE_STATE": str(state),
+            })
 
         def run(args: list[str], *, payload: object | None = None, env: dict[str, str] | None = None,
                 expected: int = 0) -> subprocess.CompletedProcess[str]:
@@ -121,14 +195,13 @@ def main(binary_arg: str | None) -> None:
             ],
         }
 
-        # The first invocation installs the local connection and reports the
-        # setup-only handoff. The second invocation persists the task.
+        # Ready setup saves the brief on the first invocation, both with
+        # native Codex and the explicit protocol fixture used by CI.
         first = focus("begin", payload=begin_payload)
         first_json = json.loads(first.stdout)
-        if first_json.get("setup_only") is not True:
-            fail(f"expected setup-only handoff, got {first_json}")
-        started = focus("begin", payload=begin_payload)
-        task = json.loads(started.stdout)["focus"]
+        if first_json.get("setup_only") or not first_json.get("focus"):
+            fail(f"focus begin did not save a task after setup: {first_json}")
+        task = first_json["focus"]
         if task["status"] != "active" or task.get("hook_observed"):
             fail(f"unexpected started focus: {task}")
         task_id = task["id"]
